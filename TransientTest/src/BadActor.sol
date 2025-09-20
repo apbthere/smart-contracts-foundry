@@ -6,7 +6,7 @@ import "./IReentrancyTest.sol";
 contract BadActor is IReentrancyTest {
     address public immutable contractAddress;
     bytes public target;
-    uint public counter;
+    uint256 public counter;
 
     constructor(address targetAddress) {
         target = abi.encodeWithSignature("safeFunction(address)", this);
@@ -14,7 +14,7 @@ contract BadActor is IReentrancyTest {
     }
 
     function callbackFunction() external {
-        (bool success, ) = contractAddress.call(target);
+        (bool success,) = contractAddress.call(target);
         require(success, "Attack failed");
     }
 }

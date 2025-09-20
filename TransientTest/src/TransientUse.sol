@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import "./IReentrancyTest.sol";
 
 contract TransientUse {
-    uint transient multiplier;
+    uint256 transient multiplier;
     bool transient isExecuting;
 
     modifier nonReentrant() {
@@ -16,13 +16,13 @@ contract TransientUse {
 
     function safeFunction(address targetAddress) external nonReentrant {
         IReentrancyTest(targetAddress).callbackFunction();
-     }
+    }
 
-    function setMultiplier(uint mul) external {
+    function setMultiplier(uint256 mul) external {
         multiplier = mul;
     }
 
-    function multiply(uint value) external view returns (uint) {
+    function multiply(uint256 value) external view returns (uint256) {
         return value * multiplier;
-    } 
+    }
 }
