@@ -29,6 +29,7 @@ jobs:
 
       - name: Run Forge fmt
         run: |
+          cd TransientTest
           forge fmt --check
         id: fmt
 
