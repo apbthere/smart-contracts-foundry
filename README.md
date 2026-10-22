@@ -69,3 +69,7 @@ The escrow authorizes by `msg.sender` and checks signatures with `SignatureCheck
 - If Circle blacklists the escrow contract itself, all funds are frozen. No contract design can avoid this.
 - Fee-on-transfer behaviour (if USDC ever adds it) makes funding revert (`UnexpectedAmountReceived`) rather than under-collateralize an escrow.
 - No platform fee, no top-ups, no deadline extensions.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
