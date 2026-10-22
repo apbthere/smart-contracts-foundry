@@ -10,10 +10,7 @@ env:
 
 jobs:
   check:
-    strategy:
-      fail-fast: true
-
-    name: Foundry project
+    name: Build and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,21 +21,90 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Show Forge version
-        run: |
-          forge --version
+        run: forge --version
 
       - name: Run Forge fmt
-        run: |
-          cd TransientTest
-          forge fmt --check
-        id: fmt
+        run: forge fmt --check
 
       - name: Run Forge build
-        run: |
-          forge build --sizes
-        id: build
+        run: forge build --sizes
+
+      - name: Run Forge lint
+        run: forge lint src
 
       - name: Run Forge tests
+        # Fork tests against real USDC on Base run only when the BASE_RPC_URL secret is set.
+        env:
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+        run: forge test -vvv
+
+  slither:
+    name: Slither
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Slither
+        run: pip install slither-analyzer==0.11.6
+
+      - name: Run Slither
+        # Settings (filtered paths, excluded detectors, fail level) live in slither.config.json.
+        run: slither . --sarif slither.sarif
+
+      - name: Upload SARIF to code scanning
+        # Fork PRs get a read-only token, so only upload for pushes and same-repo PRs.
+        if: always() && hashFiles('slither.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slither.sarif
+          category: slither
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    env:
+      # Coverage uses the default (lighter) fuzz settings to stay fast.
+      FOUNDRY_PROFILE: default
+      MIN_COVERAGE: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Run Forge coverage
+        run: forge coverage --no-match-coverage "test|script" --report summary --report lcov
+
+      - name: Upload lcov report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: lcov.info
+
+      - name: Check coverage threshold
         run: |
-          forge test -vvv
-        id: test
+          set +e
+          summary=$(.github/scripts/coverage-summary.sh lcov.info "$MIN_COVERAGE")
+          status=$?
+          set -e
+          echo "$summary"
+          {
+            echo "## Coverage (minimum ${MIN_COVERAGE}%)"
+            echo
+            echo "$summary"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $status

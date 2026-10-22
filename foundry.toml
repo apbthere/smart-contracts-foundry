@@ -1,0 +1,31 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.30"
+evm_version = "cancun"
+remappings = [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "forge-std/=lib/forge-std/src/",
+]
+
+[fuzz]
+runs = 1000
+
+[invariant]
+runs = 256
+depth = 100
+
+# Heavier fuzzing in CI (FOUNDRY_PROFILE=ci)
+[profile.ci.fuzz]
+runs = 5000
+
+[profile.ci.invariant]
+runs = 512
+depth = 200
+
+[lint]
+# Deadlines and verdict expiry are timestamp-based by design; seconds of sequencer drift are irrelevant at these timescales.
+exclude_lints = ["block-timestamp"]
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
