@@ -38,6 +38,39 @@ jobs:
           BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
         run: forge test -vvv
 
+  slither:
+    name: Slither
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Slither
+        run: pip install slither-analyzer==0.11.6
+
+      - name: Run Slither
+        # Settings (filtered paths, excluded detectors, fail level) live in slither.config.json.
+        run: slither . --sarif slither.sarif
+
+      - name: Upload SARIF to code scanning
+        # Fork PRs get a read-only token, so only upload for pushes and same-repo PRs.
+        if: always() && hashFiles('slither.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slither.sarif
+          category: slither
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest

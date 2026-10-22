@@ -52,6 +52,7 @@ The only owner power is `setVerifier`, which applies to **new** escrows only. Cr
 forge build
 forge test                                               # unit + invariant (fork tests skipped)
 BASE_RPC_URL=https://mainnet.base.org forge test --mc Fork   # against real USDC on a Base fork
+slither .                                                # static analysis; settings in slither.config.json
 
 VERIFIER=0x... OWNER=0x... forge script script/DeployUsdcEscrow.s.sol \
   --rpc-url https://mainnet.base.org --broadcast --account <keystore> --verify
