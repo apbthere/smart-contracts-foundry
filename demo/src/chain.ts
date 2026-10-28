@@ -11,6 +11,7 @@ import {
   hashTypedData,
   http,
   parseAbi,
+  recoverTypedDataAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
@@ -45,9 +46,8 @@ export const publicClient = createPublicClient({ chain, transport });
 
 export const buyer = privateKeyToAccount(env("BUYER_PK") as Hex);
 export const seller = privateKeyToAccount(env("SELLER_PK") as Hex);
-export const verifierAccount = privateKeyToAccount(env("VERIFIER_PK") as Hex);
-
-// The buyer only signs (EIP-3009) and the verifier only signs (EIP-712), so neither needs gas.
+// The verifier key is not here: it belongs to a human, who signs verdicts in a browser wallet.
+// The buyer only signs (EIP-3009), so it needs no gas except for the `release` scenario.
 export const sellerWallet = createWalletClient({ account: seller, chain, transport });
 export const buyerWallet = createWalletClient({ account: buyer, chain, transport });
 
@@ -147,7 +147,7 @@ export async function signFundingAuthorization(id: Hex, amount: bigint, validBef
   return { validAfter, validBefore, signature };
 }
 
-const verdictTypedData = (escrowId: Hex, toSeller: bigint, expiry: bigint) =>
+export const verdictTypedData = (escrowId: Hex, toSeller: bigint, expiry: bigint) =>
   ({
     domain: { name: "UsdcEscrow", version: "1", chainId: chain.id, verifyingContract: escrowAddress() },
     types: {
@@ -161,8 +161,8 @@ const verdictTypedData = (escrowId: Hex, toSeller: bigint, expiry: bigint) =>
     message: { escrowId, toSeller, expiry },
   }) as const;
 
-/** Verifier signs the EIP-712 verdict, after checking its local digest matches the contract's `verdictDigest`. */
-export async function signVerdict(escrowId: Hex, toSeller: bigint, expiry: bigint): Promise<Hex> {
+/** Build the EIP-712 verdict for the verifier to sign, after checking its digest matches the contract's `verdictDigest`. */
+export async function prepareVerdict(escrowId: Hex, toSeller: bigint, expiry: bigint) {
   const typedData = verdictTypedData(escrowId, toSeller, expiry);
   const onchainDigest = await publicClient.readContract({
     address: escrowAddress(),
@@ -171,7 +171,11 @@ export async function signVerdict(escrowId: Hex, toSeller: bigint, expiry: bigin
     args: [escrowId, toSeller, expiry],
   });
   if (hashTypedData(typedData) !== onchainDigest) throw new Error("Verdict digest mismatch with contract");
-  return verifierAccount.signTypedData(typedData);
+  return typedData;
+}
+
+export function recoverVerdictSigner(escrowId: Hex, toSeller: bigint, expiry: bigint, signature: Hex) {
+  return recoverTypedDataAddress({ ...verdictTypedData(escrowId, toSeller, expiry), signature });
 }
 
 /** Send a transaction from `wallet`, wait for it, and throw if it reverted. */

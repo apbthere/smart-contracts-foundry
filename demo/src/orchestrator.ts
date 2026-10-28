@@ -4,10 +4,12 @@ import { type Deal, say, short } from "./agent.ts";
 import { buyerOpensDeal, buyerReviews } from "./agents/buyer.ts";
 import { sellerAcceptsAndFunds, sellerDelivers } from "./agents/seller.ts";
 import { verifierRules } from "./agents/verifier.ts";
+import { humanReview } from "./review/server.ts";
 import {
   Status,
   USDC_DECIMALS,
   buyer,
+  currentVerifier,
   escrowAddress,
   fmt,
   getEscrow,
@@ -18,12 +20,13 @@ import {
   send,
   txLink,
   usdcBalance,
-  verifierAccount,
 } from "./chain.ts";
 
 const SCENARIOS = ["happy", "partial", "release", "timeout"] as const;
 type Scenario = (typeof SCENARIOS)[number];
 const TIMEOUT_DEADLINE_MINUTES = 2;
+// After a human rejection, wait for the expiry refund only if the deadline is this close.
+const MAX_REFUND_WAIT_MINUTES = 10;
 
 const { values } = parseArgs({
   options: {
@@ -66,7 +69,7 @@ async function waitPastDeadline(deadline: bigint) {
 async function main() {
   console.log(`\nUsdcEscrow agent demo, scenario: ${scenario}`);
   console.log(`escrow ${escrowAddress()}`);
-  console.log(`buyer ${short(buyer.address)}  seller ${short(seller.address)}  verifier ${short(verifierAccount.address)}\n`);
+  console.log(`buyer ${short(buyer.address)}  seller ${short(seller.address)}  verifier ${short(await currentVerifier())} (human)\n`);
   const before = await balances();
 
   const deal: Deal = { brief: values.brief! };
@@ -99,12 +102,21 @@ async function main() {
     const hash = await send(sellerWallet, "refundExpired", [deal.escrowId]);
     say("chain", `refundExpired (callable by anyone) → ${txLink(hash)}`);
   } else if (deal.buyerDecision?.action !== "release") {
+    // The AI drafts; only the human holds the verifier key, so nothing settles without their signature.
     await verifierRules(deal);
-    const v = deal.verdict!;
-    say("verifier", v.rationale);
-    // executeVerdict is permissionless; the seller submits it because it is the one waiting to be paid.
-    const hash = await send(sellerWallet, "executeVerdict", [deal.escrowId, v.toSeller, v.expiry, v.signature]);
-    say("chain", `executeVerdict → ${txLink(hash)}`);
+    say("verifier", deal.draft!.rationale);
+    if ((await humanReview(deal)) === "signed") {
+      const v = deal.verdict!;
+      // executeVerdict is permissionless; the seller submits it because it is the one waiting to be paid.
+      const hash = await send(sellerWallet, "executeVerdict", [deal.escrowId, v.toSeller, v.expiry, v.signature]);
+      say("chain", `executeVerdict → ${txLink(hash)}`);
+    } else if (deal.terms!.deadline - (await now()) <= BigInt(MAX_REFUND_WAIT_MINUTES * 60)) {
+      await waitPastDeadline(deal.terms!.deadline);
+      const hash = await send(sellerWallet, "refundExpired", [deal.escrowId]);
+      say("chain", `refundExpired (callable by anyone) → ${txLink(hash)}`);
+    } else {
+      say("chain", `no verdict; anyone can call refundExpired(${deal.escrowId}) after the deadline`);
+    }
   }
 
   const after = await balances();

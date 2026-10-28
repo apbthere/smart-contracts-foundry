@@ -70,9 +70,9 @@ The escrow authorizes by `msg.sender` and checks signatures with `SignatureCheck
 
 - **Buyer** writes a spec (hashed into `terms.salt`, so the escrow id commits to it) and signs a gasless EIP-3009 funding authorization.
 - **Seller** checks the offer on-chain, submits `createEscrowWithAuthorization` (paying the gas), does the work and delivers it.
-- **Verifier** checks the spec hash, grades the deliverable against the acceptance criteria and signs an EIP-712 verdict, which the seller submits.
+- **Verifier (AI + human)**: the AI checks the spec hash, grades the deliverable against the acceptance criteria and drafts a split with a rationale. A **human** makes the final call on a local review page (`http://localhost:8787`). They can approve, change the amount (with a note) or reject, and they sign the EIP-712 verdict in their browser wallet. The seller then submits it.
 
-Tool code rechecks the contract's rules before signing or sending anything, so an agent can't produce a signature or transaction the contract would reject.
+The escrow's `verifier` is the human's wallet address, so no verdict can settle without their signature. The AI holds no key, and the demo never sees the human's key. The review server only accepts a signature recovered to the escrow's on-chain verifier. Tool code rechecks the contract's rules before signing or sending anything, so neither agents nor the page can produce a signature or transaction the contract would reject.
 
 ```shell
 forge build                     # the demo loads the ABI from out/
@@ -86,9 +86,10 @@ npm run demo -- --scenario happy     # verifier pays the seller in full
 npm run demo -- --scenario partial   # seller cuts a corner; verifier splits the payout
 npm run demo -- --scenario release   # buyer reviews and releases directly (buyer needs ETH)
 npm run demo -- --scenario timeout   # verifier offline; refundExpired after a 2-minute deadline
+# If the human rejects the draft, nothing is signed and the buyer is refunded after the deadline.
 ```
 
-For Base Sepolia, deploy with `VERIFIER=<verifier address>` using the command under [Usage](#usage). Fund the buyer from the [Circle faucet](https://faucet.circle.com) and give the seller some Base Sepolia ETH. Transcripts are written to `demo/runs/`.
+Set `VERIFIER_ADDRESS` to your browser wallet's address. Keep the wallet on Base Sepolia (chain 84532): the Anvil fork keeps that chain id, and signing needs no RPC, so the same wallet works for the rehearsal. For Base Sepolia, deploy with `VERIFIER=<your wallet address>` using the command under [Usage](#usage). Fund the buyer from the [Circle faucet](https://faucet.circle.com) and give the seller some Base Sepolia ETH. Transcripts are written to `demo/runs/`.
 
 ## Known limits
 

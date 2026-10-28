@@ -2,14 +2,13 @@ import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { keccak256, parseUnits, toBytes } from "viem";
 import { z } from "zod";
 import { type Deal, json, runAgent, say } from "../agent.ts";
-import { Status, USDC_DECIMALS, fmt, getEscrow, now, signVerdict, verifierAccount } from "../chain.ts";
+import { Status, USDC_DECIMALS, fmt, getEscrow, now } from "../chain.ts";
 
-const VERDICT_TTL = 15n * 60n;
+const SYSTEM = `You are an escrow verification assistant. You advise a human verifier, who holds the signing key and makes the final call on how escrowed USDC is split between a seller and a buyer.
+Grade the deliverable strictly against the spec's acceptance criteria, not against what you think the buyer wanted. Propose paying the seller in proportion to the criteria met; full payment only if every criterion is met.
+The human reads your rationale before signing, so explain your proposal criterion by criterion and flag anything you are unsure about.`;
 
-const SYSTEM = `You are an independent escrow verifier. Your signed verdict decides how escrowed USDC is split between a seller and a buyer.
-Grade the deliverable strictly against the spec's acceptance criteria, not against what you think the buyer wanted. Pay the seller in proportion to the criteria met; full payment only if every criterion is met.
-Your signature is final and settles real funds, so check the case first and explain your decision criterion by criterion.`;
-
+/** The verifier agent drafts a verdict. It holds no key: only the human can turn the draft into a signature. */
 export async function verifierRules(deal: Deal) {
   const getCase = betaZodTool({
     name: "get_case",
@@ -22,7 +21,6 @@ export async function verifierRules(deal: Deal) {
         status: Status[e.status],
         amount: fmt(e.amount),
         minutesUntilDeadline: Number(e.deadline - (await now())) / 60,
-        youAreTheEscrowVerifier: e.verifier === verifierAccount.address,
         specHashMatchesOnchainSalt: keccak256(toBytes(deal.spec!)) === deal.terms!.salt,
         spec: deal.spec,
         deliverable: deal.deliverable,
@@ -30,37 +28,35 @@ export async function verifierRules(deal: Deal) {
     },
   });
 
-  const sign = betaZodTool({
-    name: "sign_verdict",
-    description: "Sign the verdict. toSellerUsdc goes to the seller; the rest of the escrow goes back to the buyer.",
+  const draft = betaZodTool({
+    name: "draft_verdict",
+    description:
+      "Propose a verdict to the human verifier. toSellerUsdc goes to the seller; the rest of the escrow goes back to the buyer.",
     inputSchema: z.object({
       toSellerUsdc: z.string().describe('USDC to the seller, e.g. "1.75".'),
-      rationale: z.string().describe("Criterion-by-criterion justification."),
+      rationale: z.string().describe("Criterion-by-criterion justification for the human reviewer."),
     }),
     strict: true,
     run: async ({ toSellerUsdc, rationale }) => {
-      // The contract would reject these anyway; refusing here keeps the verifier from signing anything unusable.
+      // The contract would reject these anyway; refusing here keeps the human from being shown an unusable draft.
       const e = await getEscrow(deal.escrowId!);
-      const blockTime = await now();
       const toSeller = parseUnits(toSellerUsdc, USDC_DECIMALS);
       if (e.status !== Status.Funded) return `Refused: escrow is ${Status[e.status]}, not Funded.`;
-      if (blockTime > e.deadline) return "Refused: the deadline has passed; only refundExpired applies now.";
+      if ((await now()) > e.deadline) return "Refused: the deadline has passed; only refundExpired applies now.";
       if (toSeller < 0n || toSeller > e.amount) return `Refused: toSeller must be between 0 and ${fmt(e.amount)}.`;
 
-      const expiry = blockTime + VERDICT_TTL;
-      const signature = await signVerdict(deal.escrowId!, toSeller, expiry);
-      deal.verdict = { toSeller, expiry, signature, rationale };
-      say("verifier", `signed EIP-712 verdict: ${fmt(toSeller)} to seller, ${fmt(e.amount - toSeller)} to buyer`);
-      return `Signed. Valid for ${VERDICT_TTL / 60n} minutes.`;
+      deal.draft = { toSeller, rationale };
+      say("verifier", `drafted: ${fmt(toSeller)} to seller, ${fmt(e.amount - toSeller)} to buyer (awaiting human sign-off)`);
+      return "Draft sent to the human verifier.";
     },
   });
 
   await runAgent({
     role: "verifier",
     system: SYSTEM,
-    prompt: "A case is ready for a verdict. Load it, grade the deliverable, and sign a verdict.",
-    tools: [getCase, sign],
+    prompt: "A case is ready. Load it, grade the deliverable, and draft a verdict for the human verifier.",
+    tools: [getCase, draft],
     effort: "high",
   });
-  if (!deal.verdict) throw new Error("Verifier did not sign a verdict");
+  if (!deal.draft) throw new Error("Verifier did not draft a verdict");
 }

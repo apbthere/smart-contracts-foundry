@@ -13,7 +13,8 @@ const rpc = (method: string, params: unknown[]) => client.request({ method, para
 
 const buyer = privateKeyToAccount(env("BUYER_PK") as `0x${string}`);
 const seller = privateKeyToAccount(env("SELLER_PK") as `0x${string}`);
-const verifier = privateKeyToAccount(env("VERIFIER_PK") as `0x${string}`);
+// The human verifier's browser-wallet address. Only its owner can sign verdicts.
+const verifier = env("VERIFIER_ADDRESS") as Address;
 const USDC_FOR_BUYER = 100_000_000n; // 100 USDC
 
 /** Write `amount` into `account`'s USDC balance slot, finding FiatToken's balance mapping slot by probing. */
@@ -42,12 +43,12 @@ async function main() {
   const hash = await wallet.deployContract({
     abi: escrowAbi,
     bytecode: escrowBytecode,
-    args: [BASE_SEPOLIA_USDC, verifier.address, seller.address],
+    args: [BASE_SEPOLIA_USDC, verifier, seller.address],
   });
   const { contractAddress } = await client.waitForTransactionReceipt({ hash });
 
   console.log(`buyer ${buyer.address} funded with ${fmt(USDC_FOR_BUYER)} and 1 ETH; seller funded with 1 ETH`);
-  console.log(`UsdcEscrow deployed; verifier = ${verifier.address}`);
+  console.log(`UsdcEscrow deployed; verifier = ${verifier}`);
   console.log(`\nESCROW_ADDRESS=${contractAddress}`);
 }
 

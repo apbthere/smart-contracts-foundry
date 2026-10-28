@@ -17,13 +17,15 @@ export type Deal = {
   fundingTx?: Hash;
   declined?: string;
   deliverable?: string;
-  verdict?: { toSeller: bigint; expiry: bigint; signature: Hex; rationale: string };
+  draft?: { toSeller: bigint; rationale: string };
+  verdict?: { toSeller: bigint; expiry: bigint; signature: Hex };
+  humanDecision?: { action: "approve" | "edit" | "reject"; note?: string };
   buyerDecision?: { action: "release" | "dispute"; reason: string };
 };
 
-export type Role = "buyer" | "seller" | "verifier";
+export type Role = "buyer" | "seller" | "verifier" | "human";
 
-const COLORS: Record<Role, string> = { buyer: "\x1b[36m", seller: "\x1b[33m", verifier: "\x1b[35m" };
+const COLORS: Record<Role, string> = { buyer: "\x1b[36m", seller: "\x1b[33m", verifier: "\x1b[35m", human: "\x1b[1;31m" };
 const RESET = "\x1b[0m";
 
 mkdirSync(new URL("../runs/", import.meta.url), { recursive: true });
