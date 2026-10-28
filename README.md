@@ -64,6 +64,32 @@ USDC defaults by chain: Base `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`, Base 
 
 The escrow authorizes by `msg.sender` and checks signatures with `SignatureChecker` (ECDSA or ERC-1271). Any ERC-4337 / ERC-7579 / EIP-7702 account works as buyer or seller. Session keys belong in the account: scope them to this contract, the needed functions, a USDC cap, and an expiry. Verdict execution, expiry refunds, withdrawals and authorization funding are all permissionless, so a bundler or relayer can submit them.
 
+## Agent demo
+
+[`demo/`](demo/) runs the full lifecycle with three Claude agents on Base Sepolia, each with its own key and tools:
+
+- **Buyer** writes a spec (hashed into `terms.salt`, so the escrow id commits to it) and signs a gasless EIP-3009 funding authorization.
+- **Seller** checks the offer on-chain, submits `createEscrowWithAuthorization` (paying the gas), does the work and delivers it.
+- **Verifier** checks the spec hash, grades the deliverable against the acceptance criteria and signs an EIP-712 verdict, which the seller submits.
+
+Tool code rechecks the contract's rules before signing or sending anything, so an agent can't produce a signature or transaction the contract would reject.
+
+```shell
+forge build                     # the demo loads the ABI from out/
+cd demo && npm install && cp .env.example .env   # fill in keys
+
+# Rehearse on an Anvil fork: deploys the escrow and funds the wallets
+anvil --fork-url https://sepolia.base.org
+RPC_URL=http://127.0.0.1:8545 npm run fork-setup   # prints ESCROW_ADDRESS
+
+npm run demo -- --scenario happy     # verifier pays the seller in full
+npm run demo -- --scenario partial   # seller cuts a corner; verifier splits the payout
+npm run demo -- --scenario release   # buyer reviews and releases directly (buyer needs ETH)
+npm run demo -- --scenario timeout   # verifier offline; refundExpired after a 2-minute deadline
+```
+
+For Base Sepolia, deploy with `VERIFIER=<verifier address>` using the command under [Usage](#usage). Fund the buyer from the [Circle faucet](https://faucet.circle.com) and give the seller some Base Sepolia ETH. Transcripts are written to `demo/runs/`.
+
 ## Known limits
 
 - If Circle blacklists the escrow contract itself, all funds are frozen. No contract design can avoid this.

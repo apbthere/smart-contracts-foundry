@@ -1,0 +1,21 @@
+{
+  "name": "usdc-escrow-agent-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "demo": "tsx src/orchestrator.ts",
+    "fork-setup": "tsx src/fork-setup.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "dotenv": "^18.0.9",
+    "viem": "^2.57.13",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
