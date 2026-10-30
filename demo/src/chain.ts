@@ -1,10 +1,12 @@
 import "dotenv/config";
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import {
   type Abi,
   type Address,
   type Hash,
   type Hex,
+  type TransactionReceipt,
   createPublicClient,
   createWalletClient,
   formatUnits,
@@ -114,8 +116,13 @@ export async function usdcBalance(account: Address): Promise<bigint> {
   return publicClient.readContract({ address: await usdcAddress(), abi: usdcAbi, functionName: "balanceOf", args: [account] });
 }
 
+/**
+ * The block time the next transaction will see. Anvil mines only on demand, so its latest block can be long
+ * stale (a 2-minute deadline computed from it is already past); its pending block has the right time.
+ */
 export async function now(): Promise<bigint> {
-  return (await publicClient.getBlock()).timestamp;
+  const block = await publicClient.getBlock({ blockTag: "pending" }).catch(() => publicClient.getBlock());
+  return block.timestamp;
 }
 
 export const fmt = (amount: bigint) => `${formatUnits(amount, USDC_DECIMALS)} USDC`;
@@ -178,6 +185,9 @@ export function recoverVerdictSigner(escrowId: Hex, toSeller: bigint, expiry: bi
   return recoverTypedDataAddress({ ...verdictTypedData(escrowId, toSeller, expiry), signature });
 }
 
+/** Every mined escrow transaction, for the studio page. */
+export const transactions = new EventEmitter<{ mined: [{ functionName: string; from: Address; receipt: TransactionReceipt }] }>();
+
 /** Send a transaction from `wallet`, wait for it, and throw if it reverted. */
 export async function send(
   wallet: typeof sellerWallet,
@@ -194,5 +204,6 @@ export async function send(
   const hash = await wallet.writeContract(request);
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error(`${functionName} reverted: ${txLink(hash)}`);
+  transactions.emit("mined", { functionName, from: wallet.account.address, receipt });
   return hash;
 }

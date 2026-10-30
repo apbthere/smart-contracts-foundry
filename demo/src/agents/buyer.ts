@@ -1,7 +1,8 @@
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { keccak256, parseUnits, toBytes } from "viem";
+import { formatUnits, keccak256, parseUnits, toBytes } from "viem";
 import { z } from "zod";
-import { type Deal, json, runAgent, say } from "../agent.ts";
+import { type AgentPhase, type Deal, json, say } from "../agent.ts";
+import { hasTests, stubSpec } from "./stub.ts";
 import {
   USDC_DECIMALS,
   buyer,
@@ -18,11 +19,12 @@ import {
 } from "../chain.ts";
 
 const SYSTEM = `You are a buyer agent with a USDC wallet on Base. You commission work from a seller agent and pay through an on-chain escrow.
-Funds are locked until an independent verifier signs a verdict, the seller refunds, you release, or the deadline passes (then you are refunded automatically).
+Funds are locked until an independent verifier signs a verdict, the seller refunds, or you release. If none of that happens by the deadline, anyone (you, the seller, a bot) can then call refundExpired to send the funds back to you; it is one transaction, not automatic, and no one can block it.
 The verifier grades the seller's work only against the spec you write, so the spec must make every acceptance criterion explicit and checkable.
 Be concise in your messages.`;
 
-export async function buyerOpensDeal(deal: Deal, opts: { budget: bigint; deadlineMinutes?: number }) {
+/** Buyer writes the spec, picks terms, signs a gasless funding authorization. */
+export function buyerOpensDeal(deal: Deal, opts: { budget: bigint; deadlineMinutes?: number }): AgentPhase {
   const getWallet = betaZodTool({
     name: "get_wallet",
     description: "Your address, USDC balance, the seller's address and the escrow's required verifier.",
@@ -73,18 +75,29 @@ export async function buyerOpensDeal(deal: Deal, opts: { budget: bigint; deadlin
   });
 
   const deadlineNote = opts.deadlineMinutes ? ` The job is urgent: the deadline is fixed at ${opts.deadlineMinutes} minutes.` : "";
-  await runAgent({
+  return {
     role: "buyer",
     system: SYSTEM,
     prompt: `Your brief: ${deal.brief}\nCheck your wallet, then write the spec and propose the escrow.${deadlineNote}`,
     tools: [getWallet, proposeEscrow],
     effort: "medium",
-  });
-  if (!deal.escrowId) throw new Error("Buyer did not propose an escrow");
+    check: () => {
+      if (!deal.escrowId) throw new Error("Buyer did not propose an escrow");
+    },
+    stub: async (agent) => {
+      await agent.call("get_wallet");
+      const amountUsdc = formatUnits(opts.budget, USDC_DECIMALS);
+      const deadlineMinutes = opts.deadlineMinutes ?? 120;
+      await agent.call("propose_escrow", { spec: stubSpec(deal.brief), amountUsdc, deadlineMinutes });
+      await agent.say(
+        `Proposed the escrow and signed the funding authorization for ${amountUsdc} USDC. The verifier has ${deadlineMinutes} minutes to rule; after that anyone can call refundExpired to return the funds to me.`,
+      );
+    },
+  };
 }
 
 /** Buyer reviews the delivery and either pays in full or leaves it to the verifier. */
-export async function buyerReviews(deal: Deal) {
+export function buyerReviews(deal: Deal): AgentPhase {
   const release = betaZodTool({
     name: "release_payment",
     description: "Pay the seller the full escrow amount now. Irreversible.",
@@ -106,11 +119,20 @@ export async function buyerReviews(deal: Deal) {
     },
   });
 
-  await runAgent({
+  return {
     role: "buyer",
     system: SYSTEM,
     prompt: `The seller delivered. Review it against your spec. If every criterion is met, call release_payment; otherwise call send_to_verifier.\n\n<spec>\n${deal.spec}\n</spec>\n\n<deliverable>\n${deal.deliverable}\n</deliverable>`,
     tools: [release, dispute],
     effort: "medium",
-  });
+    stub: async (agent) => {
+      if (hasTests(deal.deliverable)) {
+        await agent.call("release_payment", { reason: "Every criterion is met, including the tests." });
+        await agent.say("The work meets the spec, so I paid the seller in full.");
+      } else {
+        await agent.call("send_to_verifier", { reason: "Criterion 5 is not met: the tests are missing." });
+        await agent.say("The tests are missing, so I sent the case to the verifier.");
+      }
+    },
+  };
 }

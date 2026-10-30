@@ -1,7 +1,8 @@
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { keccak256, parseUnits, toBytes } from "viem";
+import { formatUnits, keccak256, parseUnits, toBytes } from "viem";
 import { z } from "zod";
-import { type Deal, json, runAgent, say } from "../agent.ts";
+import { type AgentPhase, type Deal, json, say } from "../agent.ts";
+import { hasTests } from "./stub.ts";
 import { Status, USDC_DECIMALS, fmt, getEscrow, now } from "../chain.ts";
 
 const SYSTEM = `You are an escrow verification assistant. You advise a human verifier, who holds the signing key and makes the final call on how escrowed USDC is split between a seller and a buyer.
@@ -9,7 +10,7 @@ Grade the deliverable strictly against the spec's acceptance criteria, not again
 The human reads your rationale before signing, so explain your proposal criterion by criterion and flag anything you are unsure about.`;
 
 /** The verifier agent drafts a verdict. It holds no key: only the human can turn the draft into a signature. */
-export async function verifierRules(deal: Deal) {
+export function verifierRules(deal: Deal): AgentPhase {
   const getCase = betaZodTool({
     name: "get_case",
     description: "Load the escrow from chain together with the spec and the deliverable.",
@@ -51,12 +52,26 @@ export async function verifierRules(deal: Deal) {
     },
   });
 
-  await runAgent({
+  return {
     role: "verifier",
     system: SYSTEM,
     prompt: "A case is ready. Load it, grade the deliverable, and draft a verdict for the human verifier.",
     tools: [getCase, draft],
     effort: "high",
-  });
-  if (!deal.draft) throw new Error("Verifier did not draft a verdict");
+    check: () => {
+      if (!deal.draft) throw new Error("Verifier did not draft a verdict");
+    },
+    stub: async (agent) => {
+      const c = JSON.parse(await agent.call("get_case")) as { specHashMatchesOnchainSalt: boolean };
+      const amount = deal.terms!.amount;
+      // Five criteria in the canned spec; the shortcut deliverable misses only the tests.
+      const [toSeller, rationale] = !c.specHashMatchesOnchainSalt
+        ? [0n, "The spec no longer matches the hash committed on-chain, so the work can't be graded against what the buyer agreed to. Proposing a full refund; please check the spec."]
+        : hasTests(deal.deliverable)
+          ? [amount, "1-4: the implementation lowercases, transliterates accents, collapses separators and trims hyphens. 5: six tests cover every listed edge case. All 5 criteria met: full payment."]
+          : [(amount * 4n) / 5n, "1-4: the implementation meets the output rules. 5: no tests were delivered. 4 of 5 criteria met: 80% to the seller, the rest refunded."];
+      await agent.call("draft_verdict", { toSellerUsdc: formatUnits(toSeller, USDC_DECIMALS), rationale });
+      await agent.say("Draft sent to the human verifier.");
+    },
+  };
 }

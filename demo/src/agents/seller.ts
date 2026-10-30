@@ -1,7 +1,8 @@
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { keccak256, toBytes } from "viem";
 import { z } from "zod";
-import { type Deal, json, runAgent, say } from "../agent.ts";
+import { type AgentPhase, type Deal, json, say } from "../agent.ts";
+import { stubDeliverable, stubShortcutDeliverable } from "./stub.ts";
 import {
   Status,
   buyer,
@@ -22,7 +23,7 @@ Before doing any work, make sure the escrow is funded on terms you accept. You p
 Be concise in your messages.`;
 
 /** Seller checks the offer against the chain and, if it is sound, submits the buyer's funding authorization. */
-export async function sellerAcceptsAndFunds(deal: Deal) {
+export function sellerAcceptsAndFunds(deal: Deal): AgentPhase {
   const inspectOffer = betaZodTool({
     name: "inspect_offer",
     description: "Read the buyer's offer and run on-chain checks on it.",
@@ -81,17 +82,28 @@ export async function sellerAcceptsAndFunds(deal: Deal) {
     },
   });
 
-  await runAgent({
+  return {
     role: "seller",
     system: SYSTEM,
     prompt: "A buyer has sent you an offer. Inspect it, then accept and fund it, or decline it with a reason.",
     tools: [inspectOffer, acceptAndFund, decline],
     effort: "medium",
-  });
+    stub: async (agent) => {
+      const offer = JSON.parse(await agent.call("inspect_offer")) as { checks: Record<string, boolean> };
+      const failed = Object.entries(offer.checks).filter(([, ok]) => !ok).map(([name]) => name);
+      if (failed.length) {
+        await agent.call("decline_offer", { reason: `Failed checks: ${failed.join(", ")}.` });
+        await agent.say("I declined: the offer doesn't match what is committed on-chain.");
+        return;
+      }
+      await agent.call("accept_and_fund");
+      await agent.say("All checks pass, so I funded the escrow and will start the work.");
+    },
+  };
 }
 
 /** Seller does the job and submits the deliverable. `shortcut` makes it cut corners, for the partial-payout scenario. */
-export async function sellerDelivers(deal: Deal, opts: { shortcut?: boolean } = {}) {
+export function sellerDelivers(deal: Deal, opts: { shortcut?: boolean } = {}): AgentPhase {
   const submit = betaZodTool({
     name: "submit_deliverable",
     description: "Submit your finished work. The verifier sees exactly this content.",
@@ -105,12 +117,18 @@ export async function sellerDelivers(deal: Deal, opts: { shortcut?: boolean } = 
   const shortcut = opts.shortcut
     ? "\nYou are badly overbooked today: submit a fast first draft and skip whatever criterion would take the longest."
     : "";
-  await runAgent({
+  return {
     role: "seller",
     system: SYSTEM,
     prompt: `The escrow is funded. Do the job described in this spec, then call submit_deliverable.${shortcut}\n\n<spec>\n${deal.spec}\n</spec>`,
     tools: [submit],
     effort: "medium",
-  });
-  if (!deal.deliverable) throw new Error("Seller did not submit a deliverable");
+    check: () => {
+      if (!deal.deliverable) throw new Error("Seller did not submit a deliverable");
+    },
+    stub: async (agent) => {
+      await agent.call("submit_deliverable", { content: opts.shortcut ? stubShortcutDeliverable : stubDeliverable });
+      await agent.say(opts.shortcut ? "Submitted the function; the tests will have to wait." : "Submitted the function and its tests.");
+    },
+  };
 }

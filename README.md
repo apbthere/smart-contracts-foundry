@@ -87,7 +87,12 @@ npm run demo -- --scenario partial   # seller cuts a corner; verifier splits the
 npm run demo -- --scenario release   # buyer reviews and releases directly (buyer needs ETH)
 npm run demo -- --scenario timeout   # verifier offline; refundExpired after a 2-minute deadline
 # If the human rejects the draft, nothing is signed and the buyer is refunded after the deadline.
+
+npm run studio                       # the same scenarios, one step at a time, at http://localhost:8787
+STUB_ANTHROPIC=1 npm run studio      # scripted agents: no API calls or key; the chain steps are real
 ```
+
+The studio runs each step when you click it. It shows each agent's system prompt, task prompt and tool schemas, which you can edit before a run. You see every tool call and the exact result handed back to the model, and the escrow's on-chain status, balances and decoded transactions as they change. Steps without on-chain effects (writing the spec, delivering, drafting the verdict) can be re-run. The spec and deliverable can be edited between steps, to show what the integrity checks and the verifier catch. You sign the verdict on the same page. `http://localhost:8787/contract` explains the contract for non-Solidity readers: deadline windows, lifecycle, a sequence diagram of the demo, how the escrow id binds both signatures, every function and who can call it, and the tests behind each claim.
 
 Set `VERIFIER_ADDRESS` to your browser wallet's address. Keep the wallet on Base Sepolia (chain 84532): the Anvil fork keeps that chain id, and signing needs no RPC, so the same wallet works for the rehearsal. For Base Sepolia, deploy with `VERIFIER=<your wallet address>` using the command under [Usage](#usage). Fund the buyer from the [Circle faucet](https://faucet.circle.com) and give the seller some Base Sepolia ETH. Transcripts are written to `demo/runs/`.
 

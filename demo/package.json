@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "demo": "tsx src/orchestrator.ts",
+    "studio": "tsx src/studio/server.ts",
     "fork-setup": "tsx src/fork-setup.ts",
     "typecheck": "tsc --noEmit"
   },
