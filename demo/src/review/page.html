@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verdict Review</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #fff; --text: #1d1d1f; --muted: #6b6b70; --border: #e2e2e0; --accent: #2457d6; --danger: #c0392b; --ok: #1e8e3e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151517; --card: #1f1f22; --text: #ececee; --muted: #9a9aa0; --border: #333338; --accent: #6b93ff; --danger: #ff6b5e; --ok: #4cc26a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 20px; word-break: break-all; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 360px; overflow: auto; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat b { display: block; font-size: 20px; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  button { padding: 9px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--text); font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--danger); border-color: var(--danger); }
+  button:disabled { opacity: .5; cursor: default; }
+  #msg { margin-top: 12px; min-height: 1.5em; }
+  .err { color: var(--danger); } .ok { color: var(--ok); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Verdict review</h1>
+  <p class="sub" id="escrow">Loading…</p>
+
+  <section>
+    <div class="stats">
+      <div class="stat"><b id="amount">–</b><span>in escrow</span></div>
+      <div class="stat"><b id="proposal">–</b><span>AI proposes to seller</span></div>
+      <div class="stat"><b id="left">–</b><span>until deadline</span></div>
+    </div>
+  </section>
+
+  <section><h2>AI verifier's rationale</h2><pre id="rationale"></pre></section>
+  <section><h2>Spec (hash committed on-chain)</h2><pre id="spec"></pre></section>
+  <section><h2>Deliverable</h2><pre id="deliverable"></pre></section>
+
+  <section>
+    <h2>Your decision</h2>
+    <p id="wallet" class="sub">Wallet not connected.</p>
+    <label for="toSeller">USDC to seller (the rest is refunded to the buyer)</label>
+    <input id="toSeller" inputmode="decimal">
+    <label for="note">Note (required if you change the amount)</label>
+    <textarea id="note" rows="2"></textarea>
+    <div class="row">
+      <button id="connect">Connect wallet</button>
+      <button id="sign" class="primary" disabled>Sign verdict</button>
+      <button id="reject" class="danger">Reject, don't sign</button>
+    </div>
+    <div id="msg"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const BASE_SEPOLIA = "0x14a34";
+let account, caseData;
+
+function show(text, cls) { $("msg").textContent = text; $("msg").className = cls || ""; }
+
+async function post(path, body) {
+  const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+}
+
+function done(text) {
+  show(text, "ok");
+  for (const b of document.querySelectorAll("button")) b.disabled = true;
+}
+
+async function load() {
+  caseData = await (await fetch("/case")).json();
+  $("escrow").textContent = `Escrow ${caseData.escrowId} · status ${caseData.status} · verifier ${caseData.verifier}`;
+  $("amount").textContent = caseData.amountUsdc;
+  $("proposal").textContent = `${caseData.draft.toSellerUsdc} USDC`;
+  $("left").textContent = `${Math.max(0, caseData.minutesLeft).toFixed(1)} min`;
+  $("rationale").textContent = caseData.draft.rationale;
+  $("spec").textContent = caseData.spec;
+  $("deliverable").textContent = caseData.deliverable;
+  $("toSeller").value = caseData.draft.toSellerUsdc;
+}
+
+async function connect() {
+  if (!window.ethereum) return show("No browser wallet found. Install MetaMask or Rabby.", "err");
+  [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
+  try {
+    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE_SEPOLIA }] });
+  } catch (err) {
+    if (err.code !== 4902) throw err;
+    await window.ethereum.request({
+      method: "wallet_addEthereumChain",
+      params: [{ chainId: BASE_SEPOLIA, chainName: "Base Sepolia", rpcUrls: ["https://sepolia.base.org"],
+        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.basescan.org"] }],
+    });
+  }
+  const isVerifier = account.toLowerCase() === caseData.verifier.toLowerCase();
+  $("wallet").textContent = isVerifier
+    ? `Connected as ${account}, the escrow's verifier.`
+    : `Connected as ${account}. This is NOT the escrow's verifier (${caseData.verifier}); the signature will be refused.`;
+  $("wallet").className = isVerifier ? "sub ok" : "sub err";
+  $("sign").disabled = false;
+}
+
+async function sign() {
+  const toSellerUsdc = $("toSeller").value.trim();
+  const note = $("note").value.trim();
+  show("Preparing verdict…");
+  const typedData = await post("/prepare", { toSellerUsdc });
+  show("Confirm the signature in your wallet…");
+  const signature = await window.ethereum.request({
+    method: "eth_signTypedData_v4",
+    params: [account, JSON.stringify(typedData)],
+  });
+  await post("/verdict", { toSellerUsdc, expiry: typedData.message.expiry, signature, note });
+  done(`Signed: ${toSellerUsdc} USDC to the seller. The demo will now settle on-chain; you can close this tab.`);
+}
+
+async function reject() {
+  if (!confirm("Reject without signing? The buyer is refunded once the deadline passes.")) return;
+  await post("/reject", { note: $("note").value.trim() });
+  done("Rejected. No verdict was signed; you can close this tab.");
+}
+
+const guard = (fn) => () => fn().catch((err) => show(err.message || String(err), "err"));
+$("connect").onclick = guard(connect);
+$("sign").onclick = guard(sign);
+$("reject").onclick = guard(reject);
+load().catch((err) => show(`Could not load the case: ${err.message}`, "err"));
+</script>
+</body>
+</html>

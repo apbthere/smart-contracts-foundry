@@ -18,3 +18,8 @@ docs/
 
 # Coverage
 lcov.info
+
+# Agent demo
+demo/node_modules/
+demo/.env
+demo/runs/

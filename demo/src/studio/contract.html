@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How UsdcEscrow Works</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --sunken: #f0f2f5; --text: #18191c; --muted: #61656e; --faint: #8b9099;
+    --border: #e1e4e9; --accent: #2457d6; --accent-soft: #e8eefc; --ok: #16803c; --ok-soft: #e5f4ea;
+    --warn: #a15c00; --warn-soft: #fdf1df; --danger: #c0352b; --danger-soft: #fbe9e7;
+    --buyer: #0f7c8c; --seller: #b36200; --verifier: #7a3fd1; --human: #c2265b; --chain: #16803c;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1d21; --card: #24272c; --sunken: #1f2125; --text: #eceef1; --muted: #a3a8b1; --faint: #7d838d;
+    --border: #363a41; --accent: #7c9dff; --accent-soft: #2a3350; --ok: #57c47a; --ok-soft: #22362a;
+    --warn: #e5a54b; --warn-soft: #3b3020; --danger: #ff7a6e; --danger-soft: #3d2624;
+    --buyer: #4cc3d3; --seller: #f0a54a; --verifier: #b18cff; --human: #ff6f9d; --chain: #57c47a;
+    --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  code { background: var(--sunken); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+  pre { margin: 0; background: var(--sunken); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; line-height: 1.55; }
+  pre code { background: none; border: 0; padding: 0; }
+  a { color: var(--accent); }
+
+  header { background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 2; }
+  .bar { max-width: 1040px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .brand { font-weight: 650; font-size: 17px; margin-right: auto; display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+  .mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; color: #fff; font-size: 14px; }
+  .navlink { font-size: 13.5px; font-weight: 500; text-decoration: none; }
+  .navlink:hover { text-decoration: underline; }
+  button.btn { padding: 6px 13px; border-radius: 7px; border: 1px solid var(--border); background: var(--card); color: var(--text); font: inherit; font-weight: 500; cursor: pointer; }
+
+  main { max-width: 1040px; margin: 0 auto; padding: 28px 16px 96px; }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 8px; letter-spacing: -.01em; }
+  h2 { font-size: 21px; margin: 0 0 6px; letter-spacing: -.005em; }
+  h3 { font-size: 15.5px; margin: 18px 0 6px; }
+  .lede { color: var(--muted); font-size: 16.5px; max-width: 760px; margin: 0 0 18px; }
+  .muted { color: var(--muted); } .faint { color: var(--faint); } .small { font-size: 13px; }
+  section { margin-top: 44px; scroll-margin-top: 70px; }
+  section > p.intro { color: var(--muted); margin: 0 0 16px; max-width: 780px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 18px; }
+  .toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; padding: 0; list-style: none; }
+  .toc a { display: inline-block; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); text-decoration: none; font-size: 13px; color: var(--text); }
+  .toc a:hover { border-color: var(--accent); color: var(--accent); }
+  .live { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 18px; font-size: 13px; }
+  .live dt { color: var(--muted); font-size: 12px; }
+  .live dd { margin: 0; word-break: break-all; }
+
+  /* diagrams */
+  .diagram { overflow-x: auto; }
+  .diagram svg { display: block; width: 100%; height: auto; }
+  .seq svg { min-width: 760px; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--text); }
+  svg .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+  .legend i { display: inline-block; width: 26px; vertical-align: middle; margin-right: 6px; border-top: 2px solid var(--chain); }
+  .legend i.off { border-top: 2px dashed var(--faint); }
+
+  /* hash chain */
+  .chain { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.3fr) auto minmax(0, 1fr); gap: 10px; align-items: center; }
+  .node { border: 1px solid var(--border); background: var(--sunken); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+  .node b { display: block; font-size: 13.5px; margin-bottom: 2px; }
+  .node.key { border-color: var(--accent); background: var(--accent-soft); }
+  .op { color: var(--muted); font-size: 12px; text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .op::after { content: "→"; display: block; font-size: 18px; color: var(--faint); }
+  .uses { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--sunken); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td .fn { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; white-space: nowrap; }
+  td.err { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .y { color: var(--ok); font-weight: 700; } .n { color: var(--faint); }
+  .matrix td, .matrix th { text-align: center; } .matrix td:first-child, .matrix th:first-child { text-align: left; }
+
+  .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .checks { margin: 0; padding: 0; list-style: none; counter-reset: c; }
+  .checks li { counter-increment: c; position: relative; padding: 6px 0 6px 34px; border-bottom: 1px dashed var(--border); font-size: 14px; }
+  .checks li:last-child { border-bottom: 0; }
+  .checks li::before { content: counter(c); position: absolute; left: 0; top: 6px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; display: grid; place-items: center; }
+  .checks li small { display: block; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .tests li { margin: 4px 0; }
+  .tests code { font-size: 12px; }
+
+  @media (max-width: 760px) {
+    h1 { font-size: 23px; }
+    .cols, .uses { grid-template-columns: minmax(0, 1fr); }
+    .chain { grid-template-columns: minmax(0, 1fr); }
+    .op::after { content: "↓"; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="brand" href="/"><span class="mark">⇄</span> Escrow Agent Studio</a>
+    <a class="navlink" href="/">← Back to the studio</a>
+    <button class="btn" id="theme" title="Toggle theme">Dark</button>
+  </div>
+</header>
+
+<main>
+  <h1>How the escrow contract works</h1>
+  <p class="lede"><code>UsdcEscrow</code> holds USDC for a job until a verdict signed by the escrow's verifier settles it. The buyer can pay early, the seller can refund early, and after the deadline anyone can return the money to the buyer. Nobody else, including the contract's owner, can move the funds anywhere.</p>
+
+  <div class="card" id="live" hidden>
+    <dl class="live" id="live-list"></dl>
+  </div>
+
+  <ul class="toc" style="margin-top: 18px">
+    <li><a href="#lifecycle">Lifecycle</a></li>
+    <li><a href="#flow">The demo, message by message</a></li>
+    <li><a href="#id">The escrow id</a></li>
+    <li><a href="#functions">Functions</a></li>
+    <li><a href="#verdict">Verdict signature</a></li>
+    <li><a href="#powers">Who can do what</a></li>
+    <li><a href="#safety">Payout safety</a></li>
+    <li><a href="#tests">Tests</a></li>
+    <li><a href="#limits">Known limits</a></li>
+  </ul>
+
+  <!-- ===================================================================================================== -->
+  <section id="lifecycle">
+    <h2>Lifecycle</h2>
+    <p class="intro">Each escrow is a small state machine. Every settlement function first requires the status to be <code>Funded</code> and then moves it to a final state, so an escrow settles exactly once and a verdict can't be replayed.</p>
+    <div class="card diagram">
+      <svg viewBox="0 0 900 330" role="img" aria-label="State machine: None goes to Funded by createEscrow or createEscrowWithAuthorization. Funded goes to Released by release, to Resolved by executeVerdict, or to Refunded by refund or refundExpired.">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill: var(--muted)"/></marker>
+        </defs>
+        <!-- nodes -->
+        <g>
+          <rect x="20" y="132" width="120" height="56" rx="12" style="fill: var(--sunken); stroke: var(--border)"/>
+          <text x="80" y="157" text-anchor="middle" font-weight="650" font-size="15">None</text>
+          <text x="80" y="176" text-anchor="middle" font-size="11.5" style="fill: var(--muted)">id unused</text>
+
+          <rect x="330" y="132" width="140" height="56" rx="12" style="fill: var(--accent-soft); stroke: var(--accent)"/>
+          <text x="400" y="157" text-anchor="middle" font-weight="650" font-size="15" style="fill: var(--accent)">Funded</text>
+          <text x="400" y="176" text-anchor="middle" font-size="11.5" style="fill: var(--muted)">USDC locked</text>
+
+          <rect x="720" y="22" width="160" height="56" rx="12" style="fill: var(--ok-soft); stroke: var(--ok)"/>
+          <text x="800" y="47" text-anchor="middle" font-weight="650" font-size="15" style="fill: var(--ok)">Released</text>
+          <text x="800" y="66" text-anchor="middle" font-size="11.5" style="fill: var(--muted)">all to seller</text>
+
+          <rect x="720" y="132" width="160" height="56" rx="12" style="fill: var(--ok-soft); stroke: var(--ok)"/>
+          <text x="800" y="157" text-anchor="middle" font-weight="650" font-size="15" style="fill: var(--ok)">Resolved</text>
+          <text x="800" y="176" text-anchor="middle" font-size="11.5" style="fill: var(--muted)">split by verdict</text>
+
+          <rect x="720" y="242" width="160" height="56" rx="12" style="fill: var(--warn-soft); stroke: var(--warn)"/>
+          <text x="800" y="267" text-anchor="middle" font-weight="650" font-size="15" style="fill: var(--warn)">Refunded</text>
+          <text x="800" y="286" text-anchor="middle" font-size="11.5" style="fill: var(--muted)">all to refundTo</text>
+        </g>
+        <!-- edges -->
+        <g fill="none" style="stroke: var(--muted)" stroke-width="1.6" marker-end="url(#arr)">
+          <path d="M140 160 H326"/>
+          <path d="M470 140 L540 50 H716"/>
+          <path d="M470 160 H716"/>
+          <path d="M470 180 L540 270 H716"/>
+        </g>
+        <g font-size="12">
+          <text x="233" y="140" text-anchor="middle" class="mono" font-weight="600">createEscrow</text>
+          <text x="233" y="186" text-anchor="middle" class="mono" font-weight="600">…WithAuthorization</text>
+          <text x="233" y="203" text-anchor="middle" style="fill: var(--muted)">buyer, or anyone with</text>
+          <text x="233" y="218" text-anchor="middle" style="fill: var(--muted)">the buyer's signature</text>
+
+          <text x="628" y="42" text-anchor="middle" class="mono" font-weight="600">release</text>
+          <text x="628" y="68" text-anchor="middle" style="fill: var(--muted)">buyer · any time</text>
+
+          <text x="600" y="152" text-anchor="middle" class="mono" font-weight="600">executeVerdict</text>
+          <text x="600" y="178" text-anchor="middle" style="fill: var(--muted)">anyone + verifier's signature</text>
+          <text x="600" y="193" text-anchor="middle" style="fill: var(--muted)">until the deadline</text>
+
+          <text x="628" y="262" text-anchor="middle" class="mono" font-weight="600">refund · refundExpired</text>
+          <text x="628" y="288" text-anchor="middle" style="fill: var(--muted)">seller: any time</text>
+          <text x="628" y="303" text-anchor="middle" style="fill: var(--muted)">anyone: after the deadline</text>
+        </g>
+      </svg>
+      <p class="small muted" style="margin: 8px 0 0">The three final states are terminal. Calling any settlement function on them reverts with <code>NotFunded</code>.</p>
+    </div>
+  </section>
+
+  <!-- ===================================================================================================== -->
+  <section id="flow">
+    <h2>The demo, message by message</h2>
+    <p class="intro">The happy path in the studio, from the buyer's signature to the payout. Dashed arrows are off-chain messages and signatures, which cost no gas. Solid arrows are transactions and the calls they make.</p>
+    <div class="card diagram seq">
+      <svg id="seq" role="img" aria-label="Sequence diagram of the demo: the buyer signs a funding authorization, the seller submits it to the escrow which pulls USDC, the seller delivers, the AI verifier drafts a split, the human signs the verdict, and the seller submits it so the escrow pays out."></svg>
+      <div class="legend"><span><i></i>on-chain transaction</span><span><i class="off"></i>off-chain message or signature</span></div>
+    </div>
+  </section>
+
+  <!-- ===================================================================================================== -->
+  <section id="id">
+    <h2>The escrow id ties everything together</h2>
+    <p class="intro">The escrow id is a hash of the buyer and every term. Because the same id is the funding signature's nonce and the subject of the verdict, neither signature can be reused for different terms.</p>
+    <div class="card">
+      <div class="chain">
+        <div class="node"><b>Spec</b>The buyer's acceptance criteria, as text</div>
+        <div class="op">keccak256</div>
+        <div class="node"><b>Terms</b><span class="mono small">seller, refundTo, verifier,<br>amount, deadline, <b style="display: inline">salt</b></span><br><span class="small muted">plus the buyer's address</span></div>
+        <div class="op">keccak256<br>(abi.encode)</div>
+        <div class="node key"><b>Escrow id</b><span class="mono small">bytes32</span><br><span class="small muted">computeEscrowId(buyer, terms)</span></div>
+      </div>
+      <div class="uses">
+        <div class="node"><b>Funding nonce</b>The buyer's EIP-3009 authorization uses the id as its nonce, so a relayer can't submit it with a different seller, verifier or deadline.</div>
+        <div class="node"><b>Verdict subject</b>The verdict signs the id, so it can't be applied to any other escrow, even one with the same parties.</div>
+        <div class="node"><b>Storage key</b>Funding the same id twice reverts with <code>EscrowExists</code>; a repeat job needs a new salt.</div>
+      </div>
+      <p class="small muted" style="margin: 14px 0 0">In the demo the salt is <code>keccak256(spec)</code>, which commits the escrow to the exact spec. The studio's “Spec hash = escrow salt” check is this link; edit the spec in step 1 and it turns red.</p>
+    </div>
+    <h3>Terms</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+      <tr><td class="mono">seller</td><td class="mono">address</td><td>Receives the payout. Must differ from the buyer and from <code>refundTo</code>.</td></tr>
+      <tr><td class="mono">refundTo</td><td class="mono">address</td><td>Receives any refund (usually the buyer).</td></tr>
+      <tr><td class="mono">verifier</td><td class="mono">address</td><td>Who may sign verdicts. Must equal the contract's current <code>verifier</code> at funding, then is stored with the escrow.</td></tr>
+      <tr><td class="mono">amount</td><td class="mono">uint256</td><td>USDC in 6-decimal units. The contract checks it received exactly this much.</td></tr>
+      <tr><td class="mono">deadline</td><td class="mono">uint64</td><td>Unix time. Last second a verdict is accepted; refunds open after it.</td></tr>
+      <tr><td class="mono">salt</td><td class="mono">bytes32</td><td>Free field that makes ids unique; the demo puts the spec hash here.</td></tr>
+    </table></div>
+  </section>
+
+  <!-- ===================================================================================================== -->
+  <section id="functions">
+    <h2>Functions</h2>
+    <p class="intro">Every state-changing function. Reverts are custom errors, listed in the order the contract checks them.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Function</th><th>Caller</th><th>Allowed when</th><th>Effect</th><th>Reverts with</th></tr>
+      <tr><td><span class="fn">createEscrow</span>(terms)</td><td>buyer, after <code>usdc.approve</code></td><td>terms valid, id unused</td><td>pulls <code>amount</code> from the caller; Funded</td><td class="err">ZeroAddress, InvalidParties, WrongVerifier, ZeroAmount, DeadlineInPast, EscrowExists, UnexpectedAmountReceived</td></tr>
+      <tr><td><span class="fn">createEscrowWithAuthorization</span>(buyer, terms, validAfter, validBefore, sig)</td><td>anyone holding the buyer's signature</td><td>same, and the signature's nonce is the id</td><td>pulls <code>amount</code> from the buyer; Funded. Gasless for the buyer.</td><td class="err">same as above, plus USDC's own authorization errors</td></tr>
+      <tr><td><span class="fn">executeVerdict</span>(id, toSeller, expiry, sig)</td><td>anyone</td><td>Funded, <code>now ≤ deadline</code>, <code>now ≤ expiry</code></td><td><code>toSeller</code> → seller, rest → refundTo; Resolved</td><td class="err">NotFunded, DeadlinePassed, AmountExceedsEscrow, VerdictExpired, InvalidVerdictSignature</td></tr>
+      <tr><td><span class="fn">release</span>(id)</td><td>buyer</td><td>Funded</td><td>all → seller; Released</td><td class="err">NotFunded, NotAuthorized</td></tr>
+      <tr><td><span class="fn">refund</span>(id)</td><td>seller</td><td>Funded</td><td>all → refundTo; Refunded</td><td class="err">NotFunded, NotAuthorized</td></tr>
+      <tr><td><span class="fn">refundExpired</span>(id)</td><td>anyone</td><td>Funded, <code>now &gt; deadline</code></td><td>all → refundTo; Refunded</td><td class="err">NotFunded, DeadlineNotReached</td></tr>
+      <tr><td><span class="fn">withdraw</span>(account)</td><td>anyone</td><td><code>owed[account] &gt; 0</code></td><td>pays the deferred balance to <code>account</code> only</td><td class="err">NothingOwed</td></tr>
+      <tr><td><span class="fn">setVerifier</span>(newVerifier)</td><td>owner</td><td>any time</td><td>changes the verifier for escrows funded from now on</td><td class="err">OwnableUnauthorizedAccount, ZeroAddress</td></tr>
+    </table></div>
+    <p class="small muted">Read-only: <code>computeEscrowId</code>, <code>getEscrow</code>, <code>verdictDigest</code>, <code>owed</code>, <code>verifier</code>, <code>usdc</code>. Ownership transfers use OpenZeppelin's two-step <code>transferOwnership</code> / <code>acceptOwnership</code>.</p>
+  </section>
+
+  <!-- ===================================================================================================== -->
+  <section id="verdict">
+    <h2>The verdict signature</h2>
+    <p class="intro">A verdict is EIP-712 typed data, so a browser wallet shows the fields in readable form before you sign. Signing costs nothing; the seller later submits the signature in a transaction.</p>
+    <div class="cols">
+      <div>
+        <pre><code>domain {
+  name:              "UsdcEscrow"
+  version:           "1"
+  chainId:           84532        // Base Sepolia
+  verifyingContract: &lt;escrow address&gt;
+}
+
+Verdict(
+  bytes32 escrowId,   // which escrow
+  uint256 toSeller,   // the rest goes to refundTo
+  uint64  expiry      // the signature's own lifetime
+)</code></pre>
+        <p class="small muted">The domain binds the signature to this contract on this chain, so it can't be replayed on another deployment or network. The studio gives each signature a 15-minute expiry.</p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top: 0">What <code>executeVerdict</code> checks, in order</h3>
+        <ol class="checks">
+          <li>The escrow is still Funded<small>else NotFunded</small></li>
+          <li>The deadline hasn't passed<small>else DeadlinePassed</small></li>
+          <li><code>toSeller</code> is at most the escrowed amount<small>else AmountExceedsEscrow</small></li>
+          <li>The verdict hasn't expired<small>else VerdictExpired</small></li>
+          <li>The signature is from the verifier stored with this escrow: a normal key (ECDSA) or a smart-contract wallet (ERC-1271)<small>else InvalidVerdictSignature</small></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================================================== -->
+  <section id="powers">
+    <h2>Who can do what</h2>
+    <p class="intro">Each role's power over a funded escrow. The verifier decides the split but can never send money to itself; the owner can't touch existing escrows at all.</p>
+    <div class="table-wrap"><table class="matrix">
+      <tr><th>Role</th><th>Pay seller in full</th><th>Refund buyer in full</th><th>Split the funds</th><th>Change the terms</th><th>Take the funds</th></tr>
+      <tr><td><b style="color: var(--buyer)">Buyer</b></td><td class="y">✓ release</td><td class="n">after deadline</td><td class="n">–</td><td class="n">–</td><td class="n">–</td></tr>
+      <tr><td><b style="color: var(--seller)">Seller</b></td><td class="n">–</td><td class="y">✓ refund</td><td class="n">–</td><td class="n">–</td><td class="n">–</td></tr>
+      <tr><td><b style="color: var(--verifier)">Verifier</b></td><td class="y">✓ by verdict</td><td class="y">✓ by verdict</td><td class="y">✓ by verdict</td><td class="n">–</td><td class="n">–</td></tr>
+      <tr><td><b>Owner</b></td><td class="n">–</td><td class="n">–</td><td class="n">–</td><td class="n">–</td><td class="n">–</td></tr>
+      <tr><td><b>Anyone</b></td><td class="n">–</td><td class="n">after deadline</td><td class="n">submit a signed verdict</td><td class="n">–</td><td class="n">–</td></tr>
+    </table></div>
+    <p class="small muted">The owner's only power is <code>setVerifier</code>, which applies to escrows funded afterwards. Each escrow keeps the verifier it was created with, so rotating the key can't affect money already locked. The contract is not upgradeable and not pausable.</p>
+  </section>
+
+  <!-- ===================================================================================================== -->
+  <section id="safety">
+    <h2>Payout safety</h2>
+    <div class="cols">
+      <div class="card">
+        <h3 style="margin-top: 0">One party can't block the other</h3>
+        <p class="small" style="margin: 0">Payouts are pushed. If a transfer fails, for example because Circle has blacklisted the payee or paused USDC, the amount is credited to <code>owed[account]</code> instead of reverting. A blacklisted seller therefore can't freeze the buyer's refund share. Anyone can later call <code>withdraw(account)</code>, and it pays only that account.</p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top: 0">Exact amounts, no re-entry</h3>
+        <p class="small" style="margin: 0">Funding compares the contract's USDC balance before and after, and reverts with <code>UnexpectedAmountReceived</code> if it got anything but <code>amount</code>, so a future fee-on-transfer USDC can't under-collateralize an escrow. Every function that moves USDC is <code>nonReentrant</code> (OpenZeppelin's transient-storage guard), and status is updated before any payout.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================================================== -->
+  <section id="tests">
+    <h2>Tests</h2>
+    <p class="intro">30 unit and fuzz tests, 2 invariant tests that run random sequences of actions, and 2 tests against real USDC on a Base Sepolia fork. Run them with <code>forge test</code>. A few that back the claims on this page:</p>
+    <div class="cols">
+      <ul class="card tests" style="margin: 0; padding-left: 34px">
+        <li><code>testAnyoneCanRefundAfterDeadline</code></li>
+        <li><code>testVerdictAndExpiryWindowsDoNotOverlap</code></li>
+        <li><code>testVerdictCannotReplay</code></li>
+        <li><code>testVerdictRejectsOtherEscrow</code>, <code>…OtherDeployment</code>, <code>…OtherChain</code></li>
+        <li><code>testVerdictRejectsWrongSigner</code>, <code>…TamperedAmount</code>, <code>…Expired</code></li>
+        <li><code>testAuthorizationCannotBeRetargeted</code></li>
+      </ul>
+      <ul class="card tests" style="margin: 0; padding-left: 34px">
+        <li><code>testOwnerHasNoPathToFunds</code></li>
+        <li><code>testRotationAppliesToNewEscrows</code></li>
+        <li><code>testBlacklistedSellerDoesNotBlockRefundShare</code></li>
+        <li><code>testFeeOnTransferRejected</code></li>
+        <li><code>invariant_solvency</code>: the contract holds exactly what is locked plus what is owed</li>
+        <li><code>invariant_noValueLeaks</code>: the owner and verifier never gain anything</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===================================================================================================== -->
+  <section id="limits">
+    <h2>Known limits</h2>
+    <ul>
+      <li>If Circle blacklists the escrow contract itself, all funds in it are frozen. No contract design can avoid this.</li>
+      <li>Refunds after the deadline need someone to send a transaction and pay gas; nothing happens on its own.</li>
+      <li>No platform fee, no top-ups, and no deadline extensions: changing any term means a new escrow.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// ---- theme (shared with the studio page) ----
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+function applyTheme(t) { document.documentElement.dataset.theme = t; $("theme").textContent = t === "dark" ? "Light" : "Dark"; }
+applyTheme(store.get("studio-theme") || "light");
+$("theme").onclick = () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; applyTheme(t); store.set("studio-theme", t); };
+
+// ---- sequence diagram ----
+// Drawn from data so lanes and rows stay aligned. Off-chain steps are dashed.
+(function drawSequence() {
+  const lanes = [
+    ["buyer", "Buyer agent", "var(--buyer)"], ["seller", "Seller agent", "var(--seller)"], ["ai", "AI verifier", "var(--verifier)"],
+    ["you", "You (verifier key)", "var(--human)"], ["escrow", "UsdcEscrow", "var(--accent)"], ["usdc", "USDC", "var(--chain)"],
+  ];
+  const X = { buyer: 80, seller: 240, ai: 400, you: 560, escrow: 720, usdc: 920 };
+  const steps = [
+    ["phase", "1 · Agree and fund"],
+    ["buyer", "buyer", "signs ReceiveWithAuthorization (nonce = escrow id)", true],
+    ["buyer", "seller", "spec + terms + signature", true],
+    ["seller", "escrow", "createEscrowWithAuthorization(…)", false],
+    ["escrow", "usdc", "receiveWithAuthorization", false],
+    ["usdc", "escrow", "amount: buyer → escrow", false],
+    ["phase", "2 · Deliver and judge"],
+    ["seller", "ai", "deliverable", true],
+    ["ai", "you", "draft split + rationale", true],
+    ["you", "you", "signs EIP-712 Verdict (no gas)", true],
+    ["you", "seller", "verdict signature", true],
+    ["phase", "3 · Settle"],
+    ["seller", "escrow", "executeVerdict(id, toSeller, expiry, sig)", false],
+    ["escrow", "usdc", "pays seller + refundTo", false],
+  ];
+  const top = 70, row = 40, height = top + steps.length * row + 20;
+  const svg = $("seq");
+  svg.setAttribute("viewBox", `0 0 1000 ${height}`);
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs, text) => { const e = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text) e.textContent = text; svg.append(e); return e; };
+
+  const defs = el("defs", {});
+  for (const [id, color] of [["on", "var(--chain)"], ["off", "var(--faint)"]]) {
+    const m = document.createElementNS(ns, "marker");
+    for (const [k, v] of Object.entries({ id: `seq-${id}`, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" })) m.setAttribute(k, v);
+    const p = document.createElementNS(ns, "path"); p.setAttribute("d", "M0 0L10 5L0 10z"); p.setAttribute("style", `fill: ${color}`);
+    m.append(p); defs.append(m);
+  }
+  for (const [id, label, color] of lanes) {
+    el("line", { x1: X[id], x2: X[id], y1: 52, y2: height - 8, style: "stroke: var(--border)", "stroke-width": 1.5 });
+    el("rect", { x: X[id] - 72, y: 10, width: 144, height: 38, rx: 9, style: `fill: var(--card); stroke: ${color}`, "stroke-width": 1.5 });
+    el("text", { x: X[id], y: 34, "text-anchor": "middle", "font-size": 13, "font-weight": 650, style: `fill: ${color}` }, label);
+  }
+  let n = 0;
+  steps.forEach((s, i) => {
+    const y = top + i * row + 20;
+    if (s[0] === "phase") {
+      el("rect", { x: 4, y: y - 14, width: 992, height: 24, rx: 6, style: "fill: var(--sunken)" });
+      el("text", { x: 14, y: y + 3, "font-size": 12, "font-weight": 650, style: "fill: var(--muted)" }, s[1]);
+      return;
+    }
+    const [from, to, label, off] = s;
+    n++;
+    const stroke = off ? "var(--faint)" : "var(--chain)";
+    const common = { fill: "none", style: `stroke: ${stroke}`, "stroke-width": 1.7, "marker-end": `url(#seq-${off ? "off" : "on"})` };
+    if (off) common["stroke-dasharray"] = "5 4";
+    if (from === to) {
+      el("path", { ...common, d: `M${X[from]} ${y - 6} h34 v14 h-30` });
+      el("text", { x: X[from] + 44, y: y + 5, "font-size": 12.5 }, label);
+    } else {
+      const dir = X[to] > X[from] ? 1 : -1;
+      el("line", { ...common, x1: X[from] + dir * 4, x2: X[to] - dir * 4, y1: y + 6, y2: y + 6 });
+      el("text", { x: (X[from] + X[to]) / 2, y: y - 1, "text-anchor": "middle", "font-size": 12.5, class: off ? "" : "mono" }, label);
+    }
+    el("circle", { cx: X[from], cy: from === to ? y : y + 6, r: 9, style: `fill: ${off ? "var(--sunken)" : "var(--ok-soft)"}; stroke: ${stroke}` });
+    el("text", { x: X[from], y: (from === to ? y : y + 6) + 4, "text-anchor": "middle", "font-size": 10.5, "font-weight": 700 }, String(n));
+  });
+})();
+
+// ---- live data from the studio ----
+(async function showContract() {
+  let state;
+  try { state = await (await fetch("/api/state")).json(); } catch { return; }
+  const c = state.contract, n = state.network;
+  $("live").hidden = false;
+  $("live-list").replaceChildren(...[
+    ["Network", `${n.anvil ? "Anvil fork of Base Sepolia" : "Base Sepolia"} (chain ${n.chainId})`],
+    ["Escrow contract", c.escrow],
+    ["Verifier for new escrows", c.verifier],
+    ["USDC", c.usdc],
+  ].map(([k, v]) => {
+    const item = document.createElement("div");
+    item.innerHTML = '<dt></dt><dd></dd>';
+    if (v.startsWith("0x")) item.children[1].className = "mono";
+    item.children[0].textContent = k;
+    item.children[1].textContent = v;
+    return item;
+  }));
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escrow Agent Studio</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --sunken: #f0f2f5; --text: #18191c; --muted: #61656e; --faint: #8b9099;
+    --border: #e1e4e9; --accent: #2457d6; --accent-soft: #e8eefc; --ok: #16803c; --ok-soft: #e5f4ea;
+    --warn: #a15c00; --warn-soft: #fdf1df; --danger: #c0352b; --danger-soft: #fbe9e7;
+    --buyer: #0f7c8c; --seller: #b36200; --verifier: #7a3fd1; --human: #c2265b; --chain: #16803c;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1d21; --card: #24272c; --sunken: #1f2125; --text: #eceef1; --muted: #a3a8b1; --faint: #7d838d;
+    --border: #363a41; --accent: #7c9dff; --accent-soft: #2a3350; --ok: #57c47a; --ok-soft: #22362a;
+    --warn: #e5a54b; --warn-soft: #3b3020; --danger: #ff7a6e; --danger-soft: #3d2624;
+    --buyer: #4cc3d3; --seller: #f0a54a; --verifier: #b18cff; --human: #ff6f9d; --chain: #57c47a;
+    --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14.5px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  a { color: var(--accent); }
+  button, input, textarea, select { font: inherit; color: inherit; }
+
+  header { background: var(--card); border-bottom: 1px solid var(--border); }
+  .bar { max-width: 1320px; margin: 0 auto; padding: 14px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand { font-weight: 650; font-size: 17px; margin-right: auto; display: flex; align-items: center; gap: 10px; }
+  .mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; color: #fff; font-size: 14px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--sunken); border: 1px solid var(--border); color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+  .navlink { font-size: 13.5px; font-weight: 500; text-decoration: none; }
+  .navlink:hover { text-decoration: underline; }
+  .pill.stub { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); font-weight: 600; }
+  .pill[hidden] { display: none; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+
+  main { max-width: 1320px; margin: 0 auto; padding: 20px 16px 80px; }
+  .intro { color: var(--muted); margin: 0 0 16px; max-width: 760px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+  .pad { padding: 16px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  h3 { font-size: 15px; margin: 0; font-weight: 600; }
+  .muted { color: var(--muted); } .faint { color: var(--faint); } .small { font-size: 12.5px; }
+
+  /* setup */
+  .setup { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-bottom: 20px; }
+  .scenarios { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .scenario { text-align: left; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); cursor: pointer; }
+  .scenario b { display: block; font-size: 14px; }
+  .scenario span { color: var(--muted); font-size: 12.5px; }
+  .scenario[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  label { display: block; font-size: 12.5px; color: var(--muted); margin: 0 0 4px; }
+  input, textarea, select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); }
+  textarea { resize: vertical; line-height: 1.5; }
+  textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--sunken); }
+  input:focus, textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .field { margin-bottom: 10px; }
+
+  button.btn { padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border); background: var(--card); cursor: pointer; font-weight: 500; }
+  button.btn:hover:not(:disabled) { background: var(--sunken); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+  button.danger { color: var(--danger); border-color: var(--danger); }
+  button.link { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 12.5px; }
+  button:disabled { opacity: .45; cursor: default; }
+
+  /* layout */
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+  aside { position: sticky; top: 16px; display: grid; gap: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+
+  /* steps */
+  .steps { display: grid; gap: 14px; }
+  .step { position: relative; }
+  .step.waiting, .step.skipped { opacity: .62; }
+  .step.running { border-color: var(--accent); }
+  .step-head { display: flex; gap: 12px; padding: 14px 16px; align-items: flex-start; }
+  .num { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 650; font-size: 13px; color: #fff; }
+  .step-title { flex: 1; min-width: 0; }
+  .actor { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .about { color: var(--muted); margin: 4px 0 0; }
+  .guarantee { margin: 8px 0 0; font-size: 13px; padding: 7px 10px; border-radius: 7px; background: var(--ok-soft); color: var(--text); }
+  .guarantee b { color: var(--ok); font-weight: 600; }
+  .chip { flex: none; font-size: 12px; padding: 2px 9px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+  .chip.waiting, .chip.skipped { background: var(--sunken); color: var(--faint); }
+  .chip.ready { background: var(--accent-soft); color: var(--accent); }
+  .chip.running { background: var(--accent); color: #fff; }
+  .chip.done { background: var(--ok-soft); color: var(--ok); }
+  .chip.failed { background: var(--danger-soft); color: var(--danger); }
+  .step-body { border-top: 1px solid var(--border); padding: 4px 16px 14px; }
+  .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 0 2px; }
+  .err { color: var(--danger); } .ok { color: var(--ok); } .warn { color: var(--warn); }
+  .errbox { margin-top: 10px; padding: 8px 10px; border-radius: 7px; background: var(--danger-soft); color: var(--danger); white-space: pre-wrap; word-break: break-word; }
+
+  details.sec { margin-top: 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); }
+  details.sec > summary { cursor: pointer; padding: 9px 12px; font-weight: 600; font-size: 13.5px; list-style: none; display: flex; align-items: center; gap: 8px; }
+  details.sec > summary::-webkit-details-marker { display: none; }
+  details.sec > summary::before { content: "▸"; color: var(--faint); transition: transform .15s; }
+  details.sec[open] > summary::before { transform: rotate(90deg); }
+  details.sec > summary .count { color: var(--faint); font-weight: 500; }
+  .sec-body { padding: 0 12px 12px; }
+
+  pre.block { margin: 0; white-space: pre-wrap; word-break: break-word; background: var(--sunken); border: 1px solid var(--border); border-radius: 7px; padding: 10px; max-height: 420px; overflow: auto; }
+  .tool { border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; margin-top: 8px; }
+  .tool .name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; font-size: 13px; }
+
+  /* activity feed */
+  .feed { display: grid; gap: 8px; }
+  .entry { border-left: 3px solid var(--border); padding: 4px 0 4px 10px; }
+  .entry .who { font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
+  .entry .txt { white-space: pre-wrap; word-break: break-word; }
+  .entry.call, .entry.result { background: var(--sunken); border-radius: 0 7px 7px 0; padding: 7px 10px; }
+  .entry pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+  .entry details summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+  .usage { color: var(--faint); font-size: 12px; }
+  .live { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-size: 13px; }
+  .spinner { width: 12px; height: 12px; border: 2px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* key/value */
+  dl.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 12px; margin: 0; font-size: 13px; }
+  dl.kv dt { color: var(--muted); }
+  dl.kv dd { margin: 0; word-break: break-all; }
+  .check { display: flex; gap: 8px; align-items: baseline; font-size: 13px; margin: 3px 0; }
+
+  /* sidebar */
+  .lifecycle { display: flex; align-items: center; gap: 4px; margin-bottom: 14px; }
+  .stage { flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; padding: 6px 4px; border-radius: 6px; background: var(--sunken); color: var(--faint); }
+  .stage.on { background: var(--accent-soft); color: var(--accent); }
+  .stage.final { background: var(--ok-soft); color: var(--ok); }
+  .stage.refund { background: var(--warn-soft); color: var(--warn); }
+  .arrow { color: var(--faint); font-size: 12px; }
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 4px; }
+  .acct { background: var(--sunken); border: 1px solid var(--border); border-radius: 9px; padding: 8px; text-align: center; min-width: 0; }
+  .acct .who { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
+  .acct b { display: block; font-size: 15px; margin-top: 2px; }
+  .acct .delta { font-size: 12px; }
+  .acct .addr { font-size: 11px; color: var(--faint); }
+  .tx { border-top: 1px solid var(--border); padding: 9px 0; font-size: 13px; }
+  .tx:first-child { border-top: 0; padding-top: 0; }
+  .tx .fn { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+  .ev { font-size: 12px; color: var(--muted); margin-top: 3px; word-break: break-all; }
+  .ev b { color: var(--text); font-weight: 600; }
+  .split { display: flex; height: 26px; border-radius: 7px; overflow: hidden; margin: 8px 0 4px; font-size: 12px; font-weight: 600; color: #fff; }
+  .split div { display: grid; place-items: center; min-width: 0; white-space: nowrap; overflow: hidden; }
+  .empty { color: var(--faint); font-size: 13px; }
+
+  @media (max-width: 1000px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    aside { position: static; max-height: none; order: -1; }
+    .setup { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .scenarios { grid-template-columns: minmax(0, 1fr); }
+    .step-head { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand"><span class="mark">⇄</span> Escrow Agent Studio</div>
+    <a class="navlink" href="/contract">How the contract works</a>
+    <span class="pill stub" id="stub" hidden title="STUB_ANTHROPIC=1: agents follow a script and make no API calls">Stubbed agents · no API calls</span>
+    <span class="pill" id="network"><span class="dot"></span>connecting…</span>
+    <button class="btn" id="theme" title="Toggle theme">Dark</button>
+  </div>
+</header>
+
+<main>
+  <p class="intro">Three AI agents trade work for USDC through an on-chain escrow. A buyer agent commissions the job, a seller agent does it, and an AI verifier drafts a verdict that only you, holding the verifier wallet, can sign. Run each step yourself, look at exactly what each agent is given and does, and watch the money move on-chain.</p>
+
+  <section class="setup">
+    <div class="card pad">
+      <h2>Scenario</h2>
+      <div class="scenarios" id="scenarios"></div>
+    </div>
+    <div class="card pad">
+      <h2>Deal</h2>
+      <div class="field"><label for="brief">Buyer's brief</label><textarea id="brief" rows="3"></textarea></div>
+      <div class="row">
+        <div style="width: 130px"><label for="budget">Budget (USDC)</label><input id="budget" inputmode="decimal"></div>
+        <div style="flex: 1"></div>
+        <button class="btn primary" id="start" style="align-self: flex-end">Start new deal</button>
+      </div>
+      <div id="setup-msg" class="small" style="margin-top: 8px"></div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <div class="steps" id="steps"></div>
+    <aside>
+      <div class="card pad" id="escrow-card"></div>
+      <div class="card pad" id="money-card"></div>
+      <div class="card pad" id="tx-card"></div>
+    </aside>
+  </div>
+</main>
+
+<script>
+// ---- helpers --------------------------------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "class") el.className = v;
+    else if (k === "style") el.style.cssText = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c != null && c !== false) el.append(c instanceof Node ? c : String(c));
+  return el;
+}
+const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "–");
+function usdc(raw) {
+  if (raw == null) return "–";
+  let n = BigInt(raw); const neg = n < 0n; if (neg) n = -n;
+  const frac = (n % 1000000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return `${neg ? "-" : ""}${n / 1000000n}${frac ? "." + frac : ""} USDC`;
+}
+const eth = (raw) => `${(Number(BigInt(raw) / 10n ** 12n) / 1e6).toFixed(4)} ETH`;
+const tryJson = (text) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return null; } };
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+function linkify(text) {
+  const out = [];
+  let last = 0;
+  for (const m of text.matchAll(/https?:\/\/\S+/g)) {
+    out.push(text.slice(last, m.index));
+    const url = m[0];
+    // Explorer links don't resolve for an Anvil fork; show the hash instead.
+    out.push(state?.network.anvil && url.includes("/tx/") ? h("span", { class: "mono" }, short(url.split("/tx/")[1]) + " (local fork)") : h("a", { href: url, target: "_blank", rel: "noopener" }, url));
+    last = m.index + url.length;
+  }
+  out.push(text.slice(last));
+  return out;
+}
+function txRef(hash) {
+  if (!hash) return "–";
+  const label = h("span", { class: "mono", title: hash }, short(hash));
+  return state.network.explorer ? h("a", { href: `${state.network.explorer}/tx/${hash}`, target: "_blank", rel: "noopener" }, label) : label;
+}
+
+// ---- theme ----------------------------------------------------------------------------------------------------
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+function applyTheme(t) { document.documentElement.dataset.theme = t; $("theme").textContent = t === "dark" ? "Light" : "Dark"; }
+applyTheme(store.get("studio-theme") || "light");
+$("theme").onclick = () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; applyTheme(t); store.set("studio-theme", t); };
+
+// ---- content --------------------------------------------------------------------------------------------------
+const ACTORS = {
+  buyer: { label: "Buyer agent", color: "var(--buyer)" },
+  seller: { label: "Seller agent", color: "var(--seller)" },
+  verifier: { label: "AI verifier", color: "var(--verifier)" },
+  human: { label: "You · verifier", color: "var(--human)" },
+  chain: { label: "Blockchain", color: "var(--chain)" },
+};
+const SCENARIOS = {
+  happy: ["Happy path", "The seller does the job right; you sign a full payout."],
+  partial: ["Partial delivery", "The seller cuts a corner; the AI proposes a split."],
+  release: ["Buyer releases", "The buyer reviews the work itself and pays directly."],
+  timeout: ["Verifier offline", "No verdict is signed; the buyer is refunded after a 2-minute deadline."],
+};
+function stepInfo(id) {
+  const d = state.deal;
+  switch (id) {
+    case "open": return { actor: "buyer", title: "Writes the spec and signs the payment",
+      about: "Turns the brief into a spec with numbered, checkable criteria, picks the amount and deadline, and signs a gasless EIP-3009 payment authorization. Nothing is on-chain yet.",
+      guarantee: "The spec's hash becomes the escrow's salt and the escrow id becomes the signature's nonce, so no one can change the terms after the buyer signs." };
+    case "fund": return { actor: "seller", title: "Checks the offer and funds the escrow",
+      about: "Verifies the offer against the chain, then submits the buyer's signed authorization and pays the gas. The USDC moves from the buyer's wallet into the contract.",
+      guarantee: "The contract rejects the authorization if any term differs from what the buyer signed, and the same escrow can't be funded twice." };
+    case "deliver": return { actor: "seller", title: "Does the work",
+      about: "Writes the deliverable off-chain while the funds stay locked in the contract.",
+      guarantee: "Neither side can take the money alone: the seller can only refund in full, the buyer can only release in full." };
+    case "review": return { actor: "buyer", title: "Reviews the delivery",
+      about: "Checks the work against its own spec and either pays in full or hands the case to the verifier.",
+      guarantee: "Only the buyer can call release(), and it pays the seller the full amount." };
+    case "draft": return { actor: "verifier", title: "Drafts a verdict",
+      about: "Grades the deliverable against the spec, criterion by criterion, and proposes how to split the funds. It holds no key.",
+      guarantee: "A draft is only advice. Funds move only with a signature from this escrow's verifier address." };
+    case "sign": return { actor: "human", title: "Review and sign the verdict",
+      about: "Connect the verifier wallet, accept or change the split, and sign an EIP-712 verdict. Or reject it and sign nothing.",
+      guarantee: "The contract checks that the signer is this escrow's verifier, that the verdict names this escrow, and that it hasn't expired." };
+    case "settle": {
+      const refund = !d.verdict && (state.scenario === "timeout" || d.humanDecision?.action === "reject");
+      if (refund) return { actor: "chain", title: "The deadline passes; the buyer is refunded",
+        about: state.network.anvil ? "On the Anvil fork the clock skips past the deadline instantly, then refundExpired is called. Anyone may call it." : "Waits for the deadline, then calls refundExpired. Anyone may call it.",
+        guarantee: "Refunds need nobody's permission, and the verdict and refund windows never overlap, so they can't race." };
+      if (d.verdict) return { actor: "chain", title: "The verdict is submitted; the contract pays out",
+        about: "executeVerdict is permissionless. The seller submits it because it is the one waiting to be paid.",
+        guarantee: "Each escrow settles exactly once: toSeller goes to the seller and the rest goes back to the buyer." };
+      return { actor: "chain", title: "Settlement",
+        about: "Pays out the signed verdict, or refunds the buyer after the deadline if you reject it.",
+        guarantee: "Each escrow settles exactly once, and refunds after the deadline need nobody's permission." };
+    }
+  }
+}
+
+// ---- state ----------------------------------------------------------------------------------------------------
+let state = null;
+let sessionId = null;
+let selectedScenario = null;
+let account = null;
+// Per-step UI that must survive re-renders: prompt drafts, open sections, document edits, rendered feed length.
+let ui = {};
+const stepUi = (id) => (ui[id] ??= { drafts: null, dirty: false, open: {}, editing: null, fed: 0, sign: null });
+
+async function refresh() {
+  state = await api("/api/state");
+  if (state.session !== sessionId) {
+    sessionId = state.session; ui = {}; $("steps").replaceChildren();
+    selectedScenario = state.scenario;
+    $("brief").value = state.deal.brief; $("budget").value = state.budget;
+  }
+  render();
+}
+let pending;
+const scheduleRefresh = () => { clearTimeout(pending); pending = setTimeout(() => refresh().catch(showGlobalError), 120); };
+function showGlobalError(err) { $("setup-msg").textContent = err.message || String(err); $("setup-msg").className = "small err"; }
+
+// ---- render: setup --------------------------------------------------------------------------------------------
+function renderSetup() {
+  $("scenarios").replaceChildren(...state.scenarios.map((id) =>
+    h("button", { class: "scenario", "aria-pressed": String(id === selectedScenario), onclick: () => { selectedScenario = id; renderSetup(); } },
+      h("b", {}, SCENARIOS[id][0], id === state.scenario ? h("span", { class: "faint" }, "  · current") : null),
+      h("span", {}, SCENARIOS[id][1]))));
+  $("start").disabled = !!state.running;
+  $("stub").hidden = !state.stubbed;
+  const n = state.network;
+  $("network").replaceChildren(h("span", { class: "dot" }), `${n.anvil ? "Anvil fork of Base Sepolia" : "Base Sepolia"} · block ${n.block}`);
+}
+$("start").onclick = async () => {
+  const started = state.steps.some((s) => s.state === "done" || s.state === "running");
+  if (started && !confirm("Start a new deal? The current one stays on-chain as it is.")) return;
+  try {
+    await api("/api/session", { scenario: selectedScenario, brief: $("brief").value, budget: $("budget").value });
+    $("setup-msg").textContent = "";
+    await refresh();
+  } catch (err) { showGlobalError(err); }
+};
+
+// ---- render: steps --------------------------------------------------------------------------------------------
+function render() {
+  renderSetup();
+  const container = $("steps");
+  state.steps.forEach((step, i) => {
+    let el = $(`step-${step.id}`);
+    if (!el) {
+      el = h("article", { class: "card step", id: `step-${step.id}` });
+      container.append(el);
+    }
+    renderStep(el, step, i);
+  });
+  renderEscrow(); renderMoney(); renderTxs();
+}
+
+function renderStep(el, step, i) {
+  const info = stepInfo(step.id);
+  const actor = ACTORS[info.actor];
+  const u = stepUi(step.id);
+  el.className = `card step ${step.state}`;
+
+  if (!el.firstChild) {
+    el.append(h("div", { class: "step-head" }), h("div", { class: "step-body" }));
+  }
+  const [head, body] = el.children;
+  const chipText = { waiting: "Waiting", ready: "Ready", running: "Running", done: "Done", skipped: "Skipped", failed: "Failed" }[step.state];
+  head.replaceChildren(
+    h("div", { class: "num", style: `background: ${actor.color}` }, String(i + 1)),
+    h("div", { class: "step-title" },
+      h("div", { class: "actor", style: `color: ${actor.color}` }, actor.label),
+      h("h3", {}, info.title),
+      h("p", { class: "about" }, info.about),
+      h("p", { class: "guarantee" }, h("b", {}, "Enforced on-chain: "), info.guarantee)),
+    h("span", { class: `chip ${step.state}` }, chipText));
+
+  body.hidden = step.state === "waiting" || (step.state === "skipped" && !hasFeed(step.id));
+  if (body.hidden) return;
+
+  if (!body.firstChild) {
+    body.append(h("div", { class: "slot-input" }), h("div", { class: "slot-actions" }), h("div", { class: "slot-result" }), h("div", { class: "slot-feed" }));
+  }
+  const [inputSlot, actionSlot, resultSlot, feedSlot] = body.children;
+  if (step.agent) renderInput(inputSlot, step);
+  renderActions(actionSlot, step);
+  renderFeed(feedSlot, step);
+  renderResult(resultSlot, step);
+}
+
+const hasFeed = (id) => state.log.some((e) => e.step === id);
+
+function section(slot, key, title, count, open, build) {
+  const u = stepUi(slot.closest(".step").id.slice(5));
+  let d = slot.querySelector(`details[data-key="${key}"]`);
+  if (!d) {
+    d = h("details", { class: "sec", "data-key": key }, h("summary", {}), h("div", { class: "sec-body" }));
+    d.open = u.open[key] ?? open;
+    d.addEventListener("toggle", () => { u.open[key] = d.open; });
+    slot.append(d);
+  }
+  d.firstChild.replaceChildren(title, count != null ? h("span", { class: "count" }, count) : "");
+  if (build) build(d.lastChild);
+  return d;
+}
+
+// What the agent is given: editable system + user prompt, read-only tool definitions.
+function renderInput(slot, step) {
+  const u = stepUi(step.id);
+  const editable = step.state === "ready" || step.state === "failed" || step.canRerun;
+  if (!u.drafts || (!u.dirty && u.loadedFor !== step.state)) {
+    u.loadedFor = step.state;
+    api(`/api/step/${step.id}`).then((input) => {
+      if (u.dirty) return;
+      u.drafts = input; u.rendered = false;
+      render();
+    }).catch(() => {});
+    if (!u.drafts) return;
+  }
+  section(slot, "input", "What the agent is given", `system prompt · user prompt · ${u.drafts.tools.length} tools · ${u.drafts.effort} effort`, step.state === "ready", (box) => {
+    if (u.rendered && u.renderedEditable === editable) return;
+    u.rendered = true; u.renderedEditable = editable;
+    const area = (field, rows) => {
+      const ta = h("textarea", { class: "code", rows, readonly: !editable });
+      ta.value = u.drafts[field];
+      ta.addEventListener("input", () => { u.drafts[field] = ta.value; u.dirty = true; reset.hidden = false; });
+      return ta;
+    };
+    const reset = h("button", { class: "link", hidden: !u.dirty, onclick: () => { u.dirty = false; u.drafts = null; u.loadedFor = null; renderInput(slot, step); } }, "Reset to the default prompts");
+    box.replaceChildren(
+      state.stubbed ? h("p", { class: "small warn", style: "margin: 0 0 8px" }, "Stubbed agents: a script calls these tools instead of the model, so prompt edits have no effect.") : "",
+      h("p", { class: "small muted", style: "margin: 0 0 8px" }, editable
+        ? "Edit either prompt before you run the step, for example to make the seller cut corners or the buyer stingier. The tools are fixed: they are the agent's only way to touch the chain."
+        : "This is what the agent ran with."),
+      h("label", {}, "System prompt (the agent's role and rules)"), area("system", 5),
+      h("label", { style: "margin-top: 10px" }, "User prompt (the task for this step)"), area("prompt", 6),
+      h("div", { class: "row", style: "justify-content: flex-end; margin-top: 4px" }, reset),
+      h("label", { style: "margin-top: 6px" }, "Tools the agent can call"),
+      ...u.drafts.tools.map((t) => h("div", { class: "tool" },
+        h("div", { class: "name" }, t.name), h("div", { class: "small muted" }, t.description || ""),
+        h("details", {}, h("summary", { class: "small faint", style: "cursor: pointer" }, "Input schema"), h("pre", { class: "block", style: "margin-top: 6px" }, JSON.stringify(t.input_schema, null, 2))))));
+  });
+}
+
+function renderActions(slot, step) {
+  const u = stepUi(step.id);
+  const items = [];
+  const runnable = step.state === "ready" || step.state === "failed";
+  if (step.id !== "sign" && (runnable || step.canRerun)) {
+    const label = step.canRerun ? "Run again" : step.state === "failed" ? "Retry" : step.agent ? "Run step" : "Submit on-chain";
+    items.push(h("button", { class: `btn ${step.canRerun ? "" : "primary"}`, disabled: !!state.running, onclick: () => runStep(step, slot) }, `▶ ${label}`));
+    if (step.agent && u.dirty) items.push(h("span", { class: "small warn" }, "Runs with your edited prompts"));
+    if (step.canRerun) items.push(h("span", { class: "small faint" }, "This step has no on-chain effect, so you can run it again."));
+  }
+  if (step.state === "running") items.push(h("span", { class: "live" }, h("span", { class: "spinner" }), step.agent ? "Agent is working…" : "Waiting for the chain…"));
+  slot.replaceChildren(
+    items.length ? h("div", { class: "actions" }, ...items) : "",
+    step.error ? h("div", { class: "errbox" }, step.error) : "",
+    h("div", { class: "small err msg" }));
+}
+
+async function runStep(step, slot) {
+  const u = stepUi(step.id);
+  const body = step.agent && u.dirty ? { system: u.drafts.system, prompt: u.drafts.prompt } : {};
+  try {
+    await api(`/api/step/${step.id}/run`, body);
+    u.open.feed = true; u.dirty = false; u.drafts = null; u.loadedFor = null; u.fed = 0;
+    const feed = $(`step-${step.id}`).querySelector(".slot-feed"); feed.replaceChildren();
+    await refresh();
+  } catch (err) { slot.querySelector(".msg").textContent = err.message; }
+}
+
+// Live activity: every message, tool call, tool result and chain event for this step.
+function renderFeed(slot, step) {
+  const entries = state.log.filter((e) => e.step === step.id);
+  if (!entries.length && step.state !== "running") { slot.replaceChildren(); stepUi(step.id).fed = 0; return; }
+  const u = stepUi(step.id);
+  const d = section(slot, "feed", step.agent ? "What happened" : "Activity", `${entries.filter((e) => e.kind === "tool_use").length} tool calls`, true);
+  const box = d.lastChild;
+  if (!box.firstChild) box.append(h("div", { class: "feed" }));
+  const feed = box.firstChild;
+  if (entries.length < u.fed) { feed.replaceChildren(); u.fed = 0; }
+  for (const e of entries.slice(u.fed)) feed.append(renderEntry(e));
+  u.fed = entries.length;
+}
+
+function renderEntry(e) {
+  const actor = ACTORS[e.role] || ACTORS.chain;
+  const who = (suffix) => h("div", { class: "who", style: `color: ${actor.color}` }, actor.label, suffix ? h("span", { class: "faint" }, ` · ${suffix}`) : "");
+  if (e.kind === "usage") return h("div", { class: "usage" }, `Model usage: ${e.text}`);
+  if (e.kind === "thinking") return h("div", { class: "entry", style: `border-color: ${actor.color}` },
+    h("details", {}, h("summary", {}, "Thinking"), h("div", { class: "txt small muted" }, e.text)));
+  if (e.kind === "tool_use") {
+    // One row per argument, so a multi-line spec or deliverable reads as text rather than an escaped JSON string.
+    const args = Object.entries(e.data || {});
+    return h("div", { class: "entry call", style: `border-color: ${actor.color}` },
+      who(`calls ${e.tool}`),
+      args.length
+        ? h("dl", { class: "kv", style: "margin-top: 4px" }, ...args.flatMap(([k, v]) => [
+            h("dt", { class: "mono" }, k),
+            h("dd", {}, h("pre", { class: "mono", style: "margin: 0" }, typeof v === "string" ? v : JSON.stringify(v, null, 2)))]))
+        : h("div", { class: "small faint" }, "no arguments"));
+  }
+  if (e.kind === "tool_result") {
+    const pretty = tryJson(e.text);
+    const long = (pretty || e.text).length > 600;
+    const content = h("pre", { class: "mono" }, pretty || e.text);
+    return h("div", { class: "entry result", style: `border-color: var(--border)` },
+      h("div", { class: "who faint" }, `${e.tool} returned to the agent`),
+      long ? h("details", {}, h("summary", {}, "Show result"), content) : content);
+  }
+  return h("div", { class: "entry", style: `border-color: ${actor.color}` }, who(), h("div", { class: "txt" }, linkify(e.text)));
+}
+
+// ---- render: step results -------------------------------------------------------------------------------------
+function renderResult(slot, step) {
+  if (stepUi(step.id).editing) return; // don't clobber an edit in progress
+  const build = RESULTS[step.id];
+  const content = build && build(state.deal, step);
+  slot.replaceChildren(content || "");
+}
+
+function docEditor(field, title, note) {
+  const d = state.deal;
+  const stepId = field === "spec" ? "open" : "deliver";
+  const u = stepUi(stepId);
+  const box = h("div");
+  const view = () => {
+    u.editing = null;
+    const settled = state.onchain && ["Released", "Refunded", "Resolved"].includes(state.onchain.status);
+    box.replaceChildren(
+      h("div", { class: "row", style: "justify-content: space-between; margin-bottom: 6px" },
+        h("label", { style: "margin: 0" }, title),
+        settled || state.running ? "" : h("button", { class: "link", onclick: edit }, "Edit (tamper test)")),
+      h("pre", { class: "block" }, d[field]));
+  };
+  const edit = () => {
+    u.editing = field;
+    const ta = h("textarea", { class: "code", rows: 14 });
+    ta.value = d[field];
+    const msg = h("div", { class: "small err" });
+    box.replaceChildren(
+      h("label", {}, title), h("p", { class: "small warn", style: "margin: 0 0 6px" }, note), ta, msg,
+      h("div", { class: "row", style: "margin-top: 8px" },
+        h("button", { class: "btn primary", onclick: async () => {
+          try { await api("/api/deal", { [field]: ta.value }); u.editing = null; await refresh(); } catch (err) { msg.textContent = err.message; }
+        } }, "Save"),
+        h("button", { class: "btn", onclick: () => { u.editing = null; render(); } }, "Cancel")));
+  };
+  view();
+  return box;
+}
+
+const check = (ok, text) => h("div", { class: "check" }, h("span", { class: ok ? "ok" : "err" }, ok ? "✓" : "✗"), h("span", {}, text));
+
+const RESULTS = {
+  open(d) {
+    if (!d.terms) return null;
+    const deadline = new Date(Number(d.terms.deadline) * 1000);
+    return h("div", {},
+      resultSec("open", "Result: terms the buyer signed", [
+        docEditor("spec", "Spec (its hash is the escrow's salt)", "Changing the spec now breaks its link to the signed terms. The seller's and verifier's checks should catch it."),
+        h("label", { style: "margin-top: 12px" }, "Escrow terms"),
+        h("dl", { class: "kv" },
+          h("dt", {}, "Escrow id"), h("dd", { class: "mono" }, d.escrowId),
+          h("dt", {}, "Amount"), h("dd", {}, usdc(d.terms.amount)),
+          h("dt", {}, "Deadline"), h("dd", {}, deadline.toLocaleString()),
+          h("dt", {}, "Seller"), h("dd", { class: "mono" }, d.terms.seller),
+          h("dt", {}, "Refund to"), h("dd", { class: "mono" }, d.terms.refundTo),
+          h("dt", {}, "Verifier"), h("dd", { class: "mono" }, d.terms.verifier),
+          h("dt", {}, "Salt"), h("dd", { class: "mono" }, d.terms.salt)),
+        h("label", { style: "margin-top: 12px" }, "EIP-3009 authorization (signed off-chain, no gas)"),
+        h("dl", { class: "kv" },
+          h("dt", {}, "Nonce"), h("dd", { class: "mono" }, `${short(d.escrowId)} (the escrow id)`),
+          h("dt", {}, "Valid before"), h("dd", {}, new Date(Number(d.authorization.validBefore) * 1000).toLocaleString()),
+          h("dt", {}, "Signature"), h("dd", { class: "mono" }, short(d.authorization.signature))),
+      ]));
+  },
+  fund(d, step) {
+    if (d.declined) return resultSec("fund", "Result: declined", [h("p", { class: "warn", style: "margin: 0" }, d.declined)]);
+    if (!d.fundingTx) return null;
+    return resultSec("fund", "Result: escrow funded", [h("dl", { class: "kv" },
+      h("dt", {}, "Transaction"), h("dd", {}, txRef(d.fundingTx)),
+      h("dt", {}, "Locked"), h("dd", {}, usdc(d.terms.amount)),
+      h("dt", {}, "Buyer's gas"), h("dd", {}, "none: the seller paid it"))]);
+  },
+  deliver(d) {
+    if (!d.deliverable) return null;
+    return resultSec("deliver", "Result: deliverable", [docEditor("deliverable", "Deliverable (what the next agent reads)", "Edits here are what the buyer or verifier will grade. Try removing the tests and see whether the verifier notices.")]);
+  },
+  review(d) {
+    if (!d.buyerDecision) return null;
+    const released = d.buyerDecision.action === "release";
+    return resultSec("review", `Result: ${released ? "paid in full" : "sent to the verifier"}`, [h("p", { style: "margin: 0" }, d.buyerDecision.reason)]);
+  },
+  draft(d) {
+    if (!d.draft) return null;
+    return resultSec("draft", "Result: proposed verdict", [splitBar(d.draft.toSeller, d.terms.amount), h("label", { style: "margin-top: 10px" }, "Rationale for the human verifier"), h("pre", { class: "block" }, d.draft.rationale)]);
+  },
+  sign(d, step) {
+    if (step.state === "done") {
+      const hd = d.humanDecision;
+      if (hd.action === "reject") return resultSec("sign", "Result: rejected, nothing signed", [h("p", { style: "margin: 0" }, hd.note || "No note.")]);
+      return resultSec("sign", `Result: verdict signed${hd.action === "edit" ? " (amount changed)" : ""}`, [
+        splitBar(d.verdict.toSeller, d.terms.amount),
+        h("dl", { class: "kv", style: "margin-top: 8px" },
+          h("dt", {}, "Expires"), h("dd", {}, new Date(Number(d.verdict.expiry) * 1000).toLocaleString()),
+          h("dt", {}, "Signature"), h("dd", { class: "mono" }, short(d.verdict.signature)),
+          hd.note ? [h("dt", {}, "Note"), h("dd", {}, hd.note)] : null)]);
+    }
+    if (step.state !== "ready" && step.state !== "failed") return null;
+    return signPanel(d);
+  },
+  settle(d, step) {
+    if (step.state !== "done") return null;
+    const rows = ["buyer", "seller"].map((k) => {
+      const delta = BigInt(state.parties[k].usdc) - BigInt(state.before[k]);
+      return [h("dt", {}, ACTORS[k].label), h("dd", {}, `${usdc(state.parties[k].usdc)} `, h("span", { class: delta >= 0n ? "ok" : "err" }, `(${delta >= 0n ? "+" : ""}${usdc(delta)})`))];
+    });
+    return resultSec("settle", `Result: escrow ${state.onchain?.status}`, [h("dl", { class: "kv" }, ...rows.flat())]);
+  },
+};
+
+function resultSec(stepId, title, children) {
+  const slot = h("div");
+  const u = stepUi(stepId);
+  const d = h("details", { class: "sec" }, h("summary", {}, title), h("div", { class: "sec-body" }, ...children));
+  d.open = u.open.result ?? true;
+  d.addEventListener("toggle", () => { u.open.result = d.open; });
+  slot.append(d);
+  return slot;
+}
+
+function splitBar(toSeller, amount) {
+  const s = BigInt(toSeller), a = BigInt(amount);
+  const pct = a === 0n ? 0 : Number((s * 10000n) / a) / 100;
+  return h("div", {},
+    h("div", { class: "split" },
+      pct > 0 ? h("div", { style: `width: ${pct}%; background: var(--seller)` }, pct >= 18 ? `Seller ${usdc(s)}` : "") : "",
+      pct < 100 ? h("div", { style: `width: ${100 - pct}%; background: var(--buyer)` }, pct <= 82 ? `Buyer ${usdc(a - s)}` : "") : ""),
+    h("div", { class: "small muted" }, `${pct}% to the seller, ${Math.round((100 - pct) * 100) / 100}% refunded to the buyer`));
+}
+
+// ---- signing ----------------------------------------------------------------------------------------------------
+const BASE_SEPOLIA = "0x14a34";
+function signPanel(d) {
+  const u = stepUi("sign");
+  if (u.sign) { updateWalletLine(); return u.sign; } // built once so typing survives refreshes
+  const amount = h("input", { inputmode: "decimal" });
+  amount.value = usdc(d.draft.toSeller).replace(" USDC", "");
+  const note = h("textarea", { rows: 2, placeholder: "Required if you change the amount" });
+  const msg = h("div", { class: "small", style: "margin-top: 8px; min-height: 1.4em" });
+  const show = (text, cls = "") => { msg.textContent = text; msg.className = `small ${cls}`; };
+  const signBtn = h("button", { class: "btn primary", disabled: !account }, "Sign verdict");
+  const guard = (fn) => () => fn().catch((err) => show(err.message || String(err), "err"));
+
+  const connect = guard(async () => {
+    if (!window.ethereum) return show("No browser wallet found. Install MetaMask or Rabby.", "err");
+    [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
+    try {
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE_SEPOLIA }] });
+    } catch (err) {
+      if (err.code !== 4902) throw err;
+      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: BASE_SEPOLIA, chainName: "Base Sepolia", rpcUrls: ["https://sepolia.base.org"], nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.basescan.org"] }] });
+    }
+    signBtn.disabled = false; updateWalletLine(); show("");
+  });
+  signBtn.onclick = guard(async () => {
+    const toSellerUsdc = amount.value.trim();
+    show("Preparing the verdict…");
+    const typedData = await api("/api/sign/prepare", { toSellerUsdc });
+    show("Confirm the signature in your wallet…");
+    const signature = await window.ethereum.request({ method: "eth_signTypedData_v4", params: [account, JSON.stringify(typedData)] });
+    await api("/api/sign/verdict", { toSellerUsdc, expiry: typedData.message.expiry, signature, note: note.value.trim() });
+    u.sign = null; await refresh();
+  });
+  const reject = guard(async () => {
+    if (!confirm("Reject without signing? The buyer is refunded once the deadline passes.")) return;
+    await api("/api/sign/reject", { note: note.value.trim() });
+    u.sign = null; await refresh();
+  });
+
+  u.sign = h("div", {},
+    h("details", { class: "sec", open: true }, h("summary", {}, "Your decision"), h("div", { class: "sec-body" },
+      h("p", { class: "small muted", style: "margin: 0 0 10px" }, "Your wallet signs typed data only: no transaction, no gas. On the Anvil fork keep it on Base Sepolia; the fork uses the same chain id."),
+      h("p", { class: "small", id: "wallet-line", style: "margin: 0 0 10px" }),
+      h("div", { class: "field" }, h("label", {}, `USDC to the seller (of ${usdc(d.terms.amount)}; the rest is refunded to the buyer)`), amount),
+      h("div", { class: "field" }, h("label", {}, "Note"), note),
+      h("div", { class: "row" },
+        h("button", { class: "btn", onclick: connect }, "Connect wallet"), signBtn,
+        h("button", { class: "btn danger", onclick: reject }, "Reject, don't sign")),
+      msg)));
+  setTimeout(updateWalletLine);
+  return u.sign;
+}
+function updateWalletLine() {
+  const line = document.getElementById("wallet-line");
+  if (!line) return;
+  const v = state.contract.verifier;
+  if (!account) { line.textContent = `Connect the wallet for the escrow's verifier, ${v}.`; line.className = "small muted"; return; }
+  const ok = account.toLowerCase() === v.toLowerCase();
+  line.textContent = ok ? `Connected as ${account}, this escrow's verifier.` : `Connected as ${account}, which is NOT the verifier (${v}). The contract would refuse this signature.`;
+  line.className = `small ${ok ? "ok" : "err"}`;
+}
+
+// ---- render: sidebar ------------------------------------------------------------------------------------------
+function renderEscrow() {
+  const d = state.deal, o = state.onchain;
+  const status = o?.status ?? "None";
+  const settled = ["Released", "Refunded", "Resolved"].includes(status);
+  const stages = [
+    ["Signed off-chain", !!d.escrowId, false],
+    ["Funded", status !== "None", false],
+    [settled ? { Released: "Released", Refunded: "Refunded", Resolved: "Paid by verdict" }[status] : "Settled", settled, status === "Refunded"],
+  ];
+  const left = o && status === "Funded" ? Number(BigInt(o.deadline) - BigInt(state.network.time)) : null;
+  const fmtLeft = (s) => (s <= 0 ? "passed" : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s left` : `${(s / 3600).toFixed(1)}h left`);
+  const checks = d.checks;
+  $("escrow-card").replaceChildren(
+    h("h2", {}, "This escrow"),
+    h("div", { class: "lifecycle" }, ...stages.flatMap(([label, on, refund], i) => [
+      i ? h("span", { class: "arrow" }, "→") : "",
+      h("div", { class: `stage ${on ? (i === 2 ? (refund ? "refund" : "final") : "on") : ""}` }, label)])),
+    d.escrowId
+      ? h("dl", { class: "kv" },
+          h("dt", {}, "Status"), h("dd", {}, h("b", {}, status === "None" ? "Not on-chain yet" : status)),
+          h("dt", {}, "Escrow id"), h("dd", { class: "mono", title: d.escrowId }, short(d.escrowId)),
+          h("dt", {}, "Amount"), h("dd", {}, usdc(d.terms.amount)),
+          h("dt", {}, "Deadline"), h("dd", {}, new Date(Number(d.terms.deadline) * 1000).toLocaleTimeString(), left != null ? h("span", { class: left > 0 ? "muted" : "err" }, ` · ${fmtLeft(left)}`) : ""),
+          h("dt", {}, "Verifier"), h("dd", { class: "mono", title: d.terms.verifier }, short(d.terms.verifier)))
+      : h("p", { class: "empty", style: "margin: 0" }, "No escrow yet. Run step 1 to have the buyer propose one."),
+    checks ? h("div", { style: "margin-top: 10px" },
+      h("label", {}, "Integrity checks"),
+      check(checks.escrowIdMatchesTerms, "Escrow id = hash(buyer, terms)"),
+      check(checks.specHashMatchesSalt, "Spec hash = escrow salt (spec unchanged since signing)")) : "",
+    h("div", { class: "small faint", style: "margin-top: 10px; word-break: break-all" }, `Contract ${state.contract.escrow}`));
+}
+
+function renderMoney() {
+  const p = state.parties, b = state.before;
+  const locked = state.onchain?.status === "Funded" ? state.deal.terms.amount : "0";
+  const acct = (key, label, color, value, delta, addr) => h("div", { class: "acct" },
+    h("div", { class: "who", style: `color: ${color}` }, label),
+    h("b", {}, usdc(value).replace(" USDC", "")),
+    h("div", { class: "small faint" }, "USDC"),
+    delta != null && delta !== 0n ? h("div", { class: `delta ${delta > 0n ? "ok" : "err"}` }, `${delta > 0n ? "+" : ""}${usdc(delta).replace(" USDC", "")}`) : h("div", { class: "delta faint" }, "±0"),
+    addr ? h("div", { class: "addr mono", title: addr }, short(addr)) : "");
+  const arrow = (label) => h("div", { class: "arrow", style: "text-align: center" }, "→", h("div", { class: "small faint" }, label));
+  $("money-card").replaceChildren(
+    h("h2", {}, "Money"),
+    h("div", { class: "flow" },
+      acct("buyer", "Buyer", "var(--buyer)", p.buyer.usdc, BigInt(p.buyer.usdc) - BigInt(b.buyer), p.buyer.address),
+      arrow("funds"),
+      acct("escrow", "Locked", "var(--accent)", locked, null, null),
+      arrow("pays"),
+      acct("seller", "Seller", "var(--seller)", p.seller.usdc, BigInt(p.seller.usdc) - BigInt(b.seller), p.seller.address)),
+    h("p", { class: "small faint", style: "margin: 10px 0 0" },
+      `Changes since this deal started. Gas: buyer ${eth(p.buyer.eth)}, seller ${eth(p.seller.eth)}. The contract holds ${usdc(p.escrow.usdc)} across all escrows.`));
+}
+
+function renderTxs() {
+  const steps = Object.fromEntries(state.steps.map((s, i) => [s.id, i + 1]));
+  const fmtArg = (k, v) => (["amount", "value", "toSeller", "toBuyer"].includes(k) ? usdc(v) : typeof v === "string" && v.startsWith("0x") ? short(v) : String(v));
+  $("tx-card").replaceChildren(
+    h("h2", {}, "Transactions"),
+    state.txs.length ? h("div", {}, ...state.txs.map((t) => h("div", { class: "tx" },
+      h("div", { class: "row", style: "justify-content: space-between" },
+        h("span", { class: "fn" }, t.functionName), h("span", { class: "small faint" }, t.step ? `step ${steps[t.step] ?? "–"}` : "")),
+      h("div", { class: "small muted" }, txRef(t.hash), ` · block ${t.block} · ${Number(t.gasUsed).toLocaleString()} gas · from ${short(t.from)}`),
+      ...t.events.map((e) => h("div", { class: "ev" }, h("b", {}, e.name), " ", Object.entries(e.args || {}).map(([k, v]) => `${k}=${fmtArg(k, v)}`).join(", "))))))
+      : h("p", { class: "empty", style: "margin: 0" }, "None yet. The buyer signs off-chain, so the first transaction is the seller funding the escrow."),
+    state.network.anvil ? h("p", { class: "small faint", style: "margin: 10px 0 0" }, "Local Anvil fork: these transactions are not on BaseScan.") : "");
+}
+
+// ---- live updates ---------------------------------------------------------------------------------------------
+const events = new EventSource("/api/events");
+events.addEventListener("entry", (msg) => {
+  if (!state) return;
+  state.log.push(JSON.parse(msg.data));
+  const step = state.steps.find((s) => s.id === state.log.at(-1).step);
+  if (step) { const el = $(`step-${step.id}`); if (el?.querySelector(".slot-feed")) renderFeed(el.querySelector(".slot-feed"), step); }
+  scheduleRefresh();
+});
+events.addEventListener("changed", scheduleRefresh);
+setInterval(() => { if (state && !document.hidden) scheduleRefresh(); }, 10000);
+refresh().catch(showGlobalError);
+</script>
+</body>
+</html>
